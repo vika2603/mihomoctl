@@ -173,6 +173,13 @@ func TestCompletionCommandDisabled(t *testing.T) {
 	assertCLIError(t, err, exitUsage, `unknown command "completion"`)
 }
 
+func TestRootUnknownCommandSuggestsNearestCommand(t *testing.T) {
+	err := run([]string{"sttaus"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, `unknown command "sttaus"`)
+	assertCLIError(t, err, exitUsage, "Did you mean this?")
+	assertCLIError(t, err, exitUsage, "status")
+}
+
 func TestNotFoundExitCode(t *testing.T) {
 	srv := fakeMihomo(t, "")
 	var out bytes.Buffer

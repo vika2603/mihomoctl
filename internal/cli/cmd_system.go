@@ -31,7 +31,7 @@ func newSystemCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown system subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newSystemPingCommand(out, cfg), newSystemVersionCommand(out, cfg))

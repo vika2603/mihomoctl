@@ -65,7 +65,7 @@ func TestSystemCommandUsageErrors(t *testing.T) {
 		want string
 	}{
 		{name: "bare system", args: []string{"system"}, want: "system requires ping or version"},
-		{name: "unknown", args: []string{"system", "bad"}, want: `unknown system subcommand "bad"`},
+		{name: "unknown", args: []string{"system", "versoin"}, want: "Did you mean this?"},
 		{name: "ping args", args: []string{"system", "ping", "extra"}, want: "system ping takes no arguments"},
 		{name: "version args", args: []string{"system", "version", "extra"}, want: "system version takes no arguments"},
 	}

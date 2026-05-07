@@ -52,7 +52,7 @@ func newGroupsCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown groups subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newGroupsListCommand(out, cfg), newGroupsGetCommand(out, cfg), newGroupsDelayCommand(out, cfg))

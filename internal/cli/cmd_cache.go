@@ -30,7 +30,7 @@ func newCacheCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown cache subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newCacheClearCommand(out, cfg))
@@ -67,7 +67,7 @@ Examples:
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown cache clear target %q", args[0])
+			return unknownLeafCommand(cmd, "cache clear target", args[0])
 		},
 	}
 	cmd.AddCommand(newCacheClearLeafCommand(out, cfg, "fakeip", "Flush mihomo fakeip cache"))

@@ -215,7 +215,7 @@ func TestProvidersProbeUsageErrors(t *testing.T) {
 		{name: "old providers namespace removed", args: []string{"providers", "list"}, want: `unknown command "providers"`},
 		{name: "old providers healthcheck removed", args: []string{"providers", "healthcheck", "airport"}, want: `unknown command "providers"`},
 		{name: "bare rule-providers", args: []string{"rule-providers"}, want: "rule-providers requires list"},
-		{name: "rule-providers unknown", args: []string{"rule-providers", "get", "x"}, want: `unknown rule-providers subcommand "get"`},
+		{name: "rule-providers unknown", args: []string{"rule-providers", "lst"}, want: "Did you mean this?"},
 		{name: "proxy delay missing", args: []string{"proxy", "delay"}, want: "proxy delay requires <node>"},
 		{name: "proxy delay bad timeout", args: []string{"proxy", "delay", "A", "--delay-timeout", "0s"}, want: "--delay-timeout must be > 0"},
 	}

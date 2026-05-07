@@ -111,6 +111,13 @@ func TestCacheClearBareErrorSuggestsTargets(t *testing.T) {
 	assertCLIError(t, err, exitUsage, "cache clear dns")
 }
 
+func TestCacheClearUnknownTargetSuggestsKnownTarget(t *testing.T) {
+	err := run([]string{"cache", "clear", "dn"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, `unknown cache clear target "dn"`)
+	assertCLIError(t, err, exitUsage, "Did you mean this?")
+	assertCLIError(t, err, exitUsage, "dns")
+}
+
 func TestConnectionsListHumanFormatsIECBytesAndAlias(t *testing.T) {
 	srv := fakeMihomoWith(t, fakeOptions{connections: []map[string]any{
 		testConnection("c-large", "2026-05-07T04:00:00Z", "tcp", "192.0.2.20", "54000", "203.0.113.1", "443", "example.com", "MATCH", []string{"Proxy"}, 1536, 1048576),
