@@ -80,6 +80,94 @@ func TestRuleProvidersList(t *testing.T) {
 	}
 }
 
+func TestProxyProvidersHealthcheckAndSafetyFlags(t *testing.T) {
+	seen := ""
+	srv := fakeMihomoWith(t, fakeOptions{onHealthcheck: func(provider string) {
+		seen = provider
+	}})
+
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "proxy-providers", "healthcheck", "airport", "--yes", "--json"}, &out); err != nil {
+		t.Fatalf("proxy-providers healthcheck --yes --json failed: %v", err)
+	}
+	if seen != "airport" {
+		t.Fatalf("healthcheck provider = %q, want airport", seen)
+	}
+	var got providerHealthcheckOutput
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatalf("invalid raw JSON: %v\n%s", err, out.String())
+	}
+	if len(raw) != 7 {
+		t.Fatalf("healthcheck JSON must retain exactly 7 fields; keys=%v", raw)
+	}
+	if _, ok := raw["risk"]; ok {
+		t.Fatalf("healthcheck is side-effecting read and must not grow risk field: keys=%v", raw)
+	}
+	if got.Provider != "airport" || got.Health != "healthy" || got.NodeCount != 2 {
+		t.Fatalf("unexpected healthcheck output: %+v", got)
+	}
+
+	err := run([]string{"--endpoint", srv.URL, "proxy-providers", "healthcheck", "airport", "--dry-run"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, "does not support --dry-run")
+	assertCLIError(t, err, exitUsage, "Drop --dry-run to run the healthcheck")
+}
+
+func TestProxyProvidersUpdateMutationSafety(t *testing.T) {
+	updateCount := 0
+	srv := fakeMihomoWith(t, fakeOptions{onProviderUpdate: func(provider string) {
+		if provider != "airport" {
+			t.Fatalf("update provider = %q, want airport", provider)
+		}
+		updateCount++
+	}})
+
+	err := run([]string{"--endpoint", srv.URL, "proxy-providers", "update", "airport"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, "non-interactive session requires --yes")
+	if updateCount != 0 {
+		t.Fatalf("non-TTY abort still called update endpoint %d times", updateCount)
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "proxy-providers", "update", "airport", "--dry-run", "--json"}, &out); err != nil {
+		t.Fatalf("proxy-providers update --dry-run --json failed: %v", err)
+	}
+	if updateCount != 0 {
+		t.Fatalf("dry-run called update endpoint %d times", updateCount)
+	}
+	var dry providerUpdateOutput
+	if err := json.Unmarshal(out.Bytes(), &dry); err != nil {
+		t.Fatalf("invalid dry-run JSON: %v\n%s", err, out.String())
+	}
+	if dry.Provider != "airport" || dry.Updated || !dry.DryRun || dry.DryRunMode != "client_simulated" {
+		t.Fatalf("unexpected dry-run output: %+v", dry)
+	}
+	if dry.Risk == nil || dry.Risk.Level != "medium" {
+		t.Fatalf("dry-run risk = %+v, want medium", dry.Risk)
+	}
+
+	out.Reset()
+	if err := run([]string{"--endpoint", srv.URL, "proxy-providers", "update", "airport", "--yes", "--json"}, &out); err != nil {
+		t.Fatalf("proxy-providers update --yes --json failed: %v", err)
+	}
+	if updateCount != 1 {
+		t.Fatalf("update endpoint called %d times, want 1", updateCount)
+	}
+	var updated providerUpdateOutput
+	if err := json.Unmarshal(out.Bytes(), &updated); err != nil {
+		t.Fatalf("invalid update JSON: %v\n%s", err, out.String())
+	}
+	if updated.Provider != "airport" || !updated.Updated || updated.DryRun || updated.DryRunMode != "" {
+		t.Fatalf("unexpected update output: %+v", updated)
+	}
+	if updated.Risk == nil || updated.Risk.Level != "medium" {
+		t.Fatalf("update risk = %+v, want medium", updated.Risk)
+	}
+}
+
 func TestProxyDelayJSONAndQuery(t *testing.T) {
 	var seen url.Values
 	srv := fakeMihomoWith(t, fakeOptions{
@@ -122,8 +210,10 @@ func TestProvidersProbeUsageErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "bare proxy-providers", args: []string{"proxy-providers"}, want: "proxy-providers requires list or get"},
+		{name: "bare proxy-providers", args: []string{"proxy-providers"}, want: "proxy-providers requires list, get, update, or healthcheck"},
 		{name: "proxy-providers get missing", args: []string{"proxy-providers", "get"}, want: "proxy-providers get requires <name>"},
+		{name: "old providers namespace removed", args: []string{"providers", "list"}, want: `unknown command "providers"`},
+		{name: "old providers healthcheck removed", args: []string{"providers", "healthcheck", "airport"}, want: `unknown command "providers"`},
 		{name: "bare rule-providers", args: []string{"rule-providers"}, want: "rule-providers requires list"},
 		{name: "rule-providers unknown", args: []string{"rule-providers", "get", "x"}, want: `unknown rule-providers subcommand "get"`},
 		{name: "proxy delay missing", args: []string{"proxy", "delay"}, want: "proxy delay requires <node>"},
