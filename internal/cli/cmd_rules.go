@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 type rulesListOptions struct {
@@ -79,7 +80,7 @@ func runRulesList(ctx context.Context, out io.Writer, cfg config, client *mihomo
 	}
 	result := buildRulesOutput(rules, opts)
 	if cfg.jsonOut {
-		return writeJSON(out, result)
+		return render.WriteJSON(out, result)
 	}
 	if len(result.Rules) == 0 {
 		fmt.Fprintln(out, "no rules")

@@ -37,8 +37,9 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 ### Internal
 
-- Central error renderer added at `internal/cli/error_renderer.go` — single `renderError(err, jsonMode bool)` entry point shared by all commands, replacing per-command ad-hoc rendering. Refactor lands first (no wire-shape change), then v0.4's envelope is layered on top per Vince merge gate item 9. (PR <TBD>, ADR-0010)
-- `internal/mihomo` client gains `Connections.Watch(ctx, opts)` (WebSocket transport with reconnect supervisor), `DNS.Query(ctx, domain, queryType)`, `Cache.FakeIPFlush(ctx)`, `Cache.DNSFlush(ctx)`, and `Cache.ClearAll(ctx)`. WebSocket transport is internal-only — exposing a streaming client surface in `internal/streaming` waits for the second streaming command (`logs watch` / `traffic watch`) per ADR-0006's "stay in band until a second instance shows up" rule.
+- Central error rendering moved to `internal/render` — single `render.RenderError(err, jsonMode bool)` entry point shared by all commands, replacing per-command ad-hoc rendering and keeping the ADR-0010 envelope out of cobra command handlers. (PR <TBD>, ADR-0010, ADR-0013)
+- `internal/streaming` owns reconnect/backoff, NDJSON emission, EPIPE handling, single-emission streaming errors, and the 1-slot latest-snapshot/drop-old flow-control helper required by ADR-0013.
+- `internal/mihomo` client gains `Connections.Watch(ctx, opts)` (WebSocket transport), `DNS.Query(ctx, domain, queryType)`, `Cache.FakeIPFlush(ctx)`, `Cache.DNSFlush(ctx)`, and `Cache.ClearAll(ctx)`. Client-layer streaming types stay named `WatchEvent`; the ADR-0010 presentation envelope stays in `internal/render` / `internal/streaming`.
 - Secret-leak `--help` regression coverage extended to **21 / 21** command surfaces cumulative (v0.3's 12 + v0.4's 9 new: `connections watch --help`, `dns --help`, `dns query --help`, `cache --help`, `cache clear --help`, `cache clear fakeip --help`, `cache clear dns --help`, `cache clear all --help`, plus the new envelope error wording's `details` redaction guard). The auth functional regression `TestSecretEnvUsedAtExecution` continues unchanged from v0.2.
 
 ### Stability
@@ -219,4 +220,3 @@ Release artifacts (until the public repo lands; tracked by Iris in docs-index):
 
 PR / release URL placeholders above will be backfilled when the public repo migration lands (tracked alongside ADR-0001 URL migration in adr-index).
 -->
-

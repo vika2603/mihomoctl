@@ -40,6 +40,19 @@ func TestDNSQueryJSONShapeNXDOMAINAndInvalidType(t *testing.T) {
 		t.Fatalf("unexpected NXDOMAIN output: %+v", nx)
 	}
 
+	qtype0 := fakeMihomoWith(t, fakeOptions{dnsBody: `{"Status":0,"Question":[{"name":"ipv6.example.","type":0}],"Answer":[]}`})
+	out.Reset()
+	if err := run([]string{"--endpoint", qtype0.URL, "dns", "query", "ipv6.example", "--type", "AAAA", "--json"}, &out); err != nil {
+		t.Fatalf("AAAA query failed: %v", err)
+	}
+	var typ dnsOutput
+	if err := json.Unmarshal(out.Bytes(), &typ); err != nil {
+		t.Fatalf("invalid QTYPE0 JSON: %v\n%s", err, out.String())
+	}
+	if typ.QueryType != "AAAA" {
+		t.Fatalf("query_type = %q, want AAAA", typ.QueryType)
+	}
+
 	assertCLIError(t, run([]string{"--endpoint", srv.URL, "dns", "query", "example.com", "--type", "BOGUS"}, &bytes.Buffer{}), exitUsage, "unsupported DNS query type")
 }
 

@@ -181,8 +181,8 @@ func TestNotFoundExitCode(t *testing.T) {
 	if !errors.As(err, &ce) {
 		t.Fatalf("expected cliError, got %T %[1]v", err)
 	}
-	if ce.code != exitNotFound {
-		t.Fatalf("exit code = %d, want %d", ce.code, exitNotFound)
+	if ce.Code != exitNotFound {
+		t.Fatalf("exit code = %d, want %d", ce.Code, exitNotFound)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestAuthError(t *testing.T) {
 	if !errors.As(err, &ce) {
 		t.Fatalf("expected cliError, got %T %[1]v", err)
 	}
-	if ce.code != exitNoPerm || !strings.Contains(ce.msg, "MIHOMOCTL_SECRET") {
-		t.Fatalf("unexpected auth error: code=%d msg=%q", ce.code, ce.msg)
+	if ce.Code != exitNoPerm || !strings.Contains(ce.Message, "MIHOMOCTL_SECRET") {
+		t.Fatalf("unexpected auth error: code=%d msg=%q", ce.Code, ce.Message)
 	}
 }

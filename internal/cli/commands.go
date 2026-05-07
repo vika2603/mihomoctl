@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 func newStatusCommand(out io.Writer, cfg *config) *cobra.Command {
@@ -165,7 +166,7 @@ func cmdStatus(ctx context.Context, out io.Writer, cfg config, client *mihomo.Cl
 
 	groups := selectableGroups(proxies)
 	if cfg.jsonOut {
-		return writeJSON(out, map[string]any{
+		return render.WriteJSON(out, map[string]any{
 			"mode":    conf.Mode,
 			"version": version.Version,
 			"groups":  groups,
@@ -187,7 +188,7 @@ func runModeGet(ctx context.Context, out io.Writer, cfg config, client *mihomo.C
 		return mapErr(err)
 	}
 	if cfg.jsonOut {
-		return writeJSON(out, map[string]string{"mode": conf.Mode})
+		return render.WriteJSON(out, map[string]string{"mode": conf.Mode})
 	}
 	fmt.Fprintln(out, conf.Mode)
 	return nil
@@ -202,7 +203,7 @@ func runModeSet(ctx context.Context, out io.Writer, cfg config, client *mihomo.C
 		return mapErr(err)
 	}
 	if cfg.jsonOut {
-		return writeJSON(out, map[string]string{"mode": mode, "previous": conf.Mode})
+		return render.WriteJSON(out, map[string]string{"mode": mode, "previous": conf.Mode})
 	}
 	fmt.Fprintf(out, "mode: %s", mode)
 	if conf.Mode != "" {
@@ -219,7 +220,7 @@ func runProxyList(ctx context.Context, out io.Writer, cfg config, client *mihomo
 	}
 	groups := selectableGroups(proxies)
 	if cfg.jsonOut {
-		return writeJSON(out, map[string]any{"groups": groups})
+		return render.WriteJSON(out, map[string]any{"groups": groups})
 	}
 	for _, g := range groups {
 		fmt.Fprintf(out, "%s", g.Name)
@@ -251,7 +252,7 @@ func runProxySet(ctx context.Context, out io.Writer, cfg config, client *mihomo.
 		return mapErr(err)
 	}
 	if cfg.jsonOut {
-		return writeJSON(out, map[string]string{"group": group, "selected": node, "previous": previous})
+		return render.WriteJSON(out, map[string]string{"group": group, "selected": node, "previous": previous})
 	}
 	fmt.Fprintf(out, "%s: %s", group, node)
 	if previous != "" {

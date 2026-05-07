@@ -87,10 +87,10 @@ func assertCLIError(t *testing.T, err error, wantCode int, wantMsg string) {
 	if !errors.As(err, &ce) {
 		t.Fatalf("expected cliError, got %T %[1]v", err)
 	}
-	if ce.code != wantCode {
-		t.Fatalf("exit code = %d, want %d; msg=%q", ce.code, wantCode, ce.msg)
+	if ce.Code != wantCode {
+		t.Fatalf("exit code = %d, want %d; msg=%q", ce.Code, wantCode, ce.Message)
 	}
-	if wantMsg != "" && !strings.Contains(ce.msg, wantMsg) {
-		t.Fatalf("message %q missing %q", ce.msg, wantMsg)
+	if wantMsg != "" && !strings.Contains(ce.Message, wantMsg) {
+		t.Fatalf("message %q missing %q", ce.Message, wantMsg)
 	}
 }

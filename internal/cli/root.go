@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 const (
@@ -19,14 +20,14 @@ const (
 )
 
 const (
-	exitOK       = 0
-	exitUsage    = 64
-	exitNotFound = 66
-	exitSoftware = 70
-	exitSystem   = 71
-	exitCantOut  = 73
-	exitTempFail = 75
-	exitNoPerm   = 77
+	exitOK       = render.ExitOK
+	exitUsage    = render.ExitUsage
+	exitNotFound = render.ExitNotFound
+	exitSoftware = render.ExitSoftware
+	exitSystem   = render.ExitSystem
+	exitCantOut  = render.ExitCantOut
+	exitTempFail = render.ExitTempFail
+	exitNoPerm   = render.ExitNoPerm
 )
 
 type config struct {
@@ -39,7 +40,7 @@ type config struct {
 
 func Run(args []string, out, errOut io.Writer) int {
 	if err, cfg := runWithConfig(args, out); err != nil {
-		return renderError(err, cfg.jsonOut, errOut)
+		return render.RenderError(err, cfg.jsonOut, errOut)
 	}
 	return exitOK
 }
