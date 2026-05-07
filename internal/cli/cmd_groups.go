@@ -59,11 +59,21 @@ func newGroupsCommand(out io.Writer, cfg *config) *cobra.Command {
 	return cmd
 }
 
+var groupsListColumns = render.TableSpec{
+	Columns: []render.Column{
+		{Name: "name"},
+		{Name: "type"},
+		{Name: "selected"},
+		{Name: "candidates"},
+	},
+}
+
 func newGroupsListCommand(out io.Writer, cfg *config) *cobra.Command {
+	var columnsFlag string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List proxy groups",
-		Long:  "List proxy groups.\n\nInventory: GET /group.\nThis is a read-only command.",
+		Long:  "List proxy groups.\n\nInventory: GET /group.\nThis is a read-only command.\n\nAvailable --columns: " + groupsListColumns.AvailableNames() + ".",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("groups list takes no arguments")
@@ -72,10 +82,11 @@ func newGroupsListCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runGroupsList(ctx, out, *cfg, client)
+				return runGroupsList(ctx, out, *cfg, client, columnsFlag)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&columnsFlag, "columns", "", "comma-separated columns for human output (default = all). Available: "+groupsListColumns.AvailableNames())
 	return cmd
 }
 
@@ -125,7 +136,7 @@ func newGroupsDelayCommand(out io.Writer, cfg *config) *cobra.Command {
 	return cmd
 }
 
-func runGroupsList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client) error {
+func runGroupsList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, columnsFlag string) error {
 	groups, err := client.ListGroups(ctx)
 	if err != nil {
 		return mapErr(err)
@@ -134,15 +145,29 @@ func runGroupsList(ctx context.Context, out io.Writer, cfg config, client *mihom
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
+	cols, err := groupsListColumns.Select(render.ParseColumns(columnsFlag))
+	if err != nil {
+		return usage("%s", err)
+	}
 	if len(result.Groups) == 0 {
 		fmt.Fprintln(out, "no proxy groups")
 		return nil
 	}
-	fmt.Fprintln(out, "name\ttype\tselected\tcandidates")
-	for _, g := range result.Groups {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%d\n", g.Name, g.Type, emptyDash(g.Selected), len(g.Candidates))
+	rows := make([][]string, len(result.Groups))
+	for i, g := range result.Groups {
+		values := map[string]string{
+			"name":       g.Name,
+			"type":       g.Type,
+			"selected":   emptyDash(g.Selected),
+			"candidates": fmt.Sprintf("%d", len(g.Candidates)),
+		}
+		row := make([]string, len(cols))
+		for j, c := range cols {
+			row[j] = values[c.Name]
+		}
+		rows[i] = row
 	}
-	return nil
+	return render.WriteTable(out, cols, rows)
 }
 
 func runGroupsGet(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string) error {

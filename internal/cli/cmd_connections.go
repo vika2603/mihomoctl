@@ -15,8 +15,25 @@ import (
 )
 
 type connectionsListOptions struct {
-	limit  int
-	filter string
+	limit   int
+	filter  string
+	columns string
+}
+
+var connectionsListColumns = render.TableSpec{
+	Columns: []render.Column{
+		{Name: "started_at"},
+		{Name: "source"},
+		{Name: "destination"},
+		{Name: "host"},
+		{Name: "network"},
+		{Name: "rule"},
+		{Name: "chains"},
+		{Name: "upload", Header: "upload"},
+		{Name: "download", Header: "download"},
+		{Name: "up_down", Header: "up/down"},
+	},
+	Default: []string{"started_at", "source", "destination", "network", "rule", "chains", "up_down"},
 }
 
 type connectionsOutput struct {
@@ -64,6 +81,7 @@ func newConnectionsListCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List active connection snapshots",
+		Long:  "List active connection snapshots.\n\nAvailable --columns: " + connectionsListColumns.AvailableNames() + ".",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("connections list takes no arguments")
@@ -81,6 +99,7 @@ func newConnectionsListCommand(out io.Writer, cfg *config) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&opts.limit, "limit", opts.limit, "maximum connections to show")
 	cmd.Flags().StringVar(&opts.filter, "filter", "", "substring filter against host, destination, source, or rule")
+	cmd.Flags().StringVar(&opts.columns, "columns", "", "comma-separated columns for human output (default = "+strings.Join(connectionsListColumns.Default, ",")+"). Available: "+connectionsListColumns.AvailableNames())
 	return cmd
 }
 
@@ -93,16 +112,39 @@ func runConnectionsList(ctx context.Context, out io.Writer, cfg config, client *
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
+	cols, err := connectionsListColumns.Select(render.ParseColumns(opts.columns))
+	if err != nil {
+		return usage("%s", err)
+	}
 	if len(result.Connections) == 0 {
 		fmt.Fprintln(out, "no active connections")
 		return nil
 	}
-	fmt.Fprintln(out, "started_at\tsource\tdestination\tnetwork\trule\tchains\tup/down")
-	for _, c := range result.Connections {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\t%s\t%s/%s\n",
-			c.StartedAt, c.Source, c.Destination, c.Network, c.Rule, strings.Join(c.Chains, " > "), render.FormatBytes(c.UploadBytes), render.FormatBytes(c.DownloadBytes))
+	rows := make([][]string, len(result.Connections))
+	for i, c := range result.Connections {
+		rows[i] = connectionRow(c, cols)
 	}
-	return nil
+	return render.WriteTable(out, cols, rows)
+}
+
+func connectionRow(c connectionOutput, cols []render.Column) []string {
+	values := map[string]string{
+		"started_at":  c.StartedAt,
+		"source":      c.Source,
+		"destination": c.Destination,
+		"host":        c.Host,
+		"network":     c.Network,
+		"rule":        c.Rule,
+		"chains":      strings.Join(c.Chains, " > "),
+		"upload":      render.FormatBytes(c.UploadBytes),
+		"download":    render.FormatBytes(c.DownloadBytes),
+		"up_down":     render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
+	}
+	row := make([]string, len(cols))
+	for j, col := range cols {
+		row[j] = values[col.Name]
+	}
+	return row
 }
 
 func buildConnectionsOutput(snapshot mihomo.ConnectionsSnapshot, opts connectionsListOptions) connectionsOutput {
