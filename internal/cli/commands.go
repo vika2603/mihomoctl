@@ -43,7 +43,7 @@ func newProxyCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown proxy subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newProxyListCommand(out, cfg), newProxySetCommand(out, cfg), newProxyDelayCommand(out, cfg))
@@ -99,7 +99,7 @@ func newModeCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown mode subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newModeGetCommand(out, cfg), newModeSetCommand(out, cfg))

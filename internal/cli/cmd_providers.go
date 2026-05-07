@@ -103,7 +103,7 @@ func newProxyProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown proxy-providers subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newProxyProvidersListCommand(out, cfg), newProxyProvidersGetCommand(out, cfg), newProxyProvidersUpdateCommand(out, cfg), newProxyProvidersHealthcheckCommand(out, cfg))
@@ -121,7 +121,7 @@ func newRuleProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown rule-providers subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newRuleProvidersListCommand(out, cfg))

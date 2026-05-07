@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -78,10 +79,12 @@ func newRootCommandWithConfig(out io.Writer) (*cobra.Command, *config) {
 		SilenceUsage:       true,
 		SilenceErrors:      true,
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
-		DisableSuggestions: true,
+		DisableSuggestions: false,
 	}
+	root.SuggestionsMinimumDistance = 2
 	root.SetOut(out)
 	root.SetErr(io.Discard)
+	root.SuggestFor = []string{"mihoctl", "mihomo", "mihomctl"}
 	root.PersistentFlags().StringVar(&cfg.endpoint, "endpoint", cfg.endpoint, "mihomo external-controller endpoint")
 	root.PersistentFlags().StringVarP(&cfg.secret, "secret", "s", "", "mihomo secret; prefer MIHOMOCTL_SECRET to avoid shell history/process-list leaks")
 	root.PersistentFlags().BoolVar(&cfg.jsonOut, "json", false, "emit JSON output")
@@ -135,6 +138,28 @@ func commandHelp(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 	return nil
+}
+
+func unknownSubcommand(cmd *cobra.Command, typed string) error {
+	return usage("%s", unknownSubcommandMessage(cmd, typed))
+}
+
+func unknownSubcommandMessage(cmd *cobra.Command, typed string) string {
+	msg := "unknown " + cmd.Name() + " subcommand " + fmt.Sprintf("%q", typed)
+	cmd.SuggestionsMinimumDistance = 2
+	if suggestions := cmd.SuggestionsFor(typed); len(suggestions) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+	return msg
+}
+
+func unknownLeafCommand(cmd *cobra.Command, label, typed string) error {
+	msg := "unknown " + label + " " + fmt.Sprintf("%q", typed)
+	cmd.SuggestionsMinimumDistance = 2
+	if suggestions := cmd.SuggestionsFor(typed); len(suggestions) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+	return usage("%s", msg)
 }
 
 func oneOfMode(mode string) bool {

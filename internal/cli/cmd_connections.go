@@ -68,7 +68,7 @@ func newConnectionsCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown connections subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newConnectionsListCommand(out, cfg))

@@ -41,7 +41,7 @@ func newRulesCommand(out io.Writer, cfg *config) *cobra.Command {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
 			}
-			return usage("unknown rules subcommand %q", args[0])
+			return unknownSubcommand(cmd, args[0])
 		},
 	}
 	cmd.AddCommand(newRulesListCommand(out, cfg))
