@@ -30,6 +30,18 @@ func HumanTable(headers []string, rows [][]string, width int) string {
 	return t.Render()
 }
 
+func FitLine(s string, width int) string {
+	if width <= 0 || lipgloss.Width(s) <= width {
+		return s
+	}
+	const ellipsis = "…"
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes)+ellipsis) > width {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + ellipsis
+}
+
 func IsTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {

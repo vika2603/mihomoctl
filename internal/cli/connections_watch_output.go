@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
 	"github.com/the-super-company/mihomoctl/internal/render"
 	"github.com/the-super-company/mihomoctl/internal/streaming"
@@ -82,10 +81,10 @@ func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEv
 	rows := result.Connections
 	lines := []string{
 		"mihomoctl connections watch",
-		fitLine("received_at: "+event.ReceivedAt.UTC().Format(time.RFC3339)+
+		render.FitLine("received_at: "+event.ReceivedAt.UTC().Format(time.RFC3339)+
 			"  matches: "+strconv.Itoa(result.Total)+
 			"  shown: "+strconv.Itoa(len(rows)), width),
-		fitLine("filter: "+filter+"  limit: "+limit, width),
+		render.FitLine("filter: "+filter+"  limit: "+limit, width),
 	}
 	if len(rows) == 0 {
 		lines = append(lines, "no matching active connections — watcher is live")
@@ -132,16 +131,4 @@ func buildWatchConnectionsOutput(connections []mihomo.Connection, filter string,
 	}
 	opts := connectionsListOptions{limit: limit, filter: filter}
 	return buildConnectionsOutput(mihomo.ConnectionsSnapshot{Connections: connections}, opts)
-}
-
-func fitLine(s string, width int) string {
-	if width <= 0 || lipgloss.Width(s) <= width {
-		return s
-	}
-	const ellipsis = "…"
-	runes := []rune(s)
-	for len(runes) > 0 && lipgloss.Width(string(runes)+ellipsis) > width {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes) + ellipsis
 }

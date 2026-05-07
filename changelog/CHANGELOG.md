@@ -17,7 +17,7 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 ### Internal
 
-- New dependency: `github.com/charmbracelet/lipgloss/table` (render-only — used for `connections watch` TTY table styling/borders; no Bubble Tea event-loop import). Added to `go.mod` / `go.sum`. The dependency is confined to `internal/render`; `internal/cli` / `internal/streaming` / `internal/mihomo` do not import it. (PRD-0009 §2.3 + ADR-0013)
+- New dependencies: `github.com/charmbracelet/lipgloss/table` (render-only table styling/borders) and `github.com/charmbracelet/x/term` (terminal width detection for bounded 80-column rendering). No Bubble Tea event-loop import. Added to `go.mod` / `go.sum`; both dependencies are confined to `internal/render`, and `internal/cli` / `internal/streaming` / `internal/mihomo` do not import them. (PRD-0009 §2.3 + ADR-0013)
 - `internal/render/format_bytes.go` — `FormatBytes(int64) string` helper, IEC binary units, used by `connections list/watch` human formatters. Pure int64 → string conversion, no secret path. (PRD-0009 §2.4)
 - `internal/render/connections_table.go` — TTY in-place table renderer for `connections watch`, lipgloss/table-based, sober styling defaults. Honors `NO_COLOR` env var; `TERM=dumb` short-circuits to non-TTY append path. (PRD-0009 §2.3)
 - Secret-leak `--help` regression coverage extended to **24 / 24** command surfaces cumulative (v0.4 21 sustained + 3 new alias invocation paths: `conns --help`, `conns list --help`, `conns watch --help`). The command-object count remains 15 leaves (alias is not a new command per cobra `Aliases` semantic). The auth functional regression `TestSecretEnvUsedAtExecution` continues unchanged from v0.2.

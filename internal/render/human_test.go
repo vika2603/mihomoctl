@@ -30,3 +30,10 @@ func TestHumanTableUsesHeadersAndRows(t *testing.T) {
 		}
 	}
 }
+
+func TestFitLineTruncatesToWidth(t *testing.T) {
+	got := FitLine("abcdef", 4)
+	if got != "abc…" {
+		t.Fatalf("FitLine = %q, want abc…", got)
+	}
+}
