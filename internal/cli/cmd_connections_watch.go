@@ -45,7 +45,8 @@ func newConnectionsWatchCommand(out io.Writer, cfg *config) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "watch",
-		Short: "Stream active connection changes from mihomo",
+		Short: "Stream active connection snapshots from mihomo",
+		Long:  "Stream active mihomo connection snapshots over WebSocket until interrupted. Filters are applied locally after each event is received.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("connections watch takes no arguments")

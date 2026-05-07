@@ -64,6 +64,7 @@ func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) 
 	cmd := &cobra.Command{
 		Use:   target,
 		Short: short,
+		Long:  cacheClearLong(target),
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("cache clear %s takes no arguments", target)
@@ -77,6 +78,19 @@ func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) 
 		},
 	}
 	return cmd
+}
+
+func cacheClearLong(target string) string {
+	switch target {
+	case "fakeip":
+		return "Flush mihomo's fakeip cache. Active connections and configuration are not changed."
+	case "dns":
+		return "Flush mihomo's DNS resolver cache. Future DNS lookups may be repeated; active connections are not changed."
+	case "all":
+		return "Flush fakeip first, then DNS. If one cache fails, mihomoctl reports a partial failure with per-cache results."
+	default:
+		return ""
+	}
 }
 
 func runCacheClear(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, target string) error {
