@@ -110,6 +110,24 @@ func (c *Client) GroupDelay(ctx context.Context, group string, opts GroupDelayOp
 	return v, err
 }
 
+func (c *Client) ListGroups(ctx context.Context) ([]Proxy, error) {
+	var v struct {
+		Proxies []Proxy `json:"proxies"`
+	}
+	err := c.do(ctx, http.MethodGet, "/group", nil, &v)
+	return v.Proxies, err
+}
+
+func (c *Client) GetGroup(ctx context.Context, group string) (Proxy, error) {
+	var v Proxy
+	path := "/group/" + url.PathEscape(group)
+	err := c.do(ctx, http.MethodGet, path, nil, &v)
+	if err == nil && v.Name == "" {
+		v.Name = group
+	}
+	return v, err
+}
+
 func (c *Client) ListConnections(ctx context.Context) (ConnectionsSnapshot, error) {
 	var v ConnectionsSnapshot
 	err := c.do(ctx, http.MethodGet, "/connections", nil, &v)
