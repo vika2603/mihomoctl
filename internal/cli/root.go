@@ -86,7 +86,7 @@ func newRootCommandWithConfig(out io.Writer) (*cobra.Command, *config) {
 	root.PersistentFlags().StringVarP(&cfg.secret, "secret", "s", "", "mihomo secret; prefer MIHOMOCTL_SECRET to avoid shell history/process-list leaks")
 	root.PersistentFlags().BoolVar(&cfg.jsonOut, "json", false, "emit JSON output")
 	root.PersistentFlags().DurationVar(&cfg.timeout, "timeout", cfg.timeout, "request timeout")
-	root.AddCommand(newStatusCommand(out, cfg), newSystemCommand(out, cfg), newProxyCommand(out, cfg), newModeCommand(out, cfg), newGroupsCommand(out, cfg), newConnectionsCommand(out, cfg), newRulesCommand(out, cfg), newProvidersCommand(out, cfg), newDNSCommand(out, cfg), newCacheCommand(out, cfg), newManCommand())
+	root.AddCommand(newStatusCommand(out, cfg), newSystemCommand(out, cfg), newProxyCommand(out, cfg), newModeCommand(out, cfg), newGroupsCommand(out, cfg), newProxyProvidersCommand(out, cfg), newRuleProvidersCommand(out, cfg), newConnectionsCommand(out, cfg), newRulesCommand(out, cfg), newProvidersCommand(out, cfg), newDNSCommand(out, cfg), newCacheCommand(out, cfg), newManCommand())
 	return root, cfg
 }
 

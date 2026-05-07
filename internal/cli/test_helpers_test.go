@@ -30,6 +30,9 @@ type fakeOptions struct {
 	providersCode   int
 	providersBody   string
 	providers       map[string]any
+	ruleProviders   map[string]any
+	proxyDelays     map[string]int
+	onProxyDelay    func(proxy string, query url.Values)
 	healthcheckCode int
 	onHealthcheck   func(provider string)
 	dnsCode         int
@@ -101,6 +104,12 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 	if opts.providers == nil {
 		opts.providers = testProviders()
 	}
+	if opts.ruleProviders == nil {
+		opts.ruleProviders = testRuleProviders()
+	}
+	if opts.proxyDelays == nil {
+		opts.proxyDelays = map[string]int{"A": 16, "B": 42}
+	}
 
 	mux := http.NewServeMux()
 	requireAuth := func(w http.ResponseWriter, r *http.Request) bool {
@@ -167,6 +176,25 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 	mux.HandleFunc("/proxies/", func(w http.ResponseWriter, r *http.Request) {
 		maybeDelay()
 		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/delay") {
+			proxyPath := strings.TrimPrefix(r.URL.Path, "/proxies/")
+			proxyPath = strings.TrimSuffix(proxyPath, "/delay")
+			proxy, err := url.PathUnescape(proxyPath)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			delay, ok := opts.proxyDelays[proxy]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if opts.onProxyDelay != nil {
+				opts.onProxyDelay(proxy, r.URL.Query())
+			}
+			writeTestJSON(t, w, map[string]int{"delay": delay})
 			return
 		}
 		if r.Method != http.MethodPut {
@@ -299,21 +327,44 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 		if !requireAuth(w, r) {
 			return
 		}
-		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/healthcheck") {
+		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		providerPath := strings.TrimPrefix(r.URL.Path, "/providers/proxies/")
-		providerPath = strings.TrimSuffix(providerPath, "/healthcheck")
+		healthcheck := strings.HasSuffix(providerPath, "/healthcheck")
+		if healthcheck {
+			providerPath = strings.TrimSuffix(providerPath, "/healthcheck")
+		}
 		provider, err := url.PathUnescape(providerPath)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if opts.onHealthcheck != nil {
-			opts.onHealthcheck(provider)
+		if healthcheck {
+			if opts.onHealthcheck != nil {
+				opts.onHealthcheck(provider)
+			}
+			w.WriteHeader(opts.healthcheckCode)
+			return
 		}
-		w.WriteHeader(opts.healthcheckCode)
+		p, ok := opts.providers[provider]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeTestJSON(t, w, p)
+	})
+	mux.HandleFunc("/providers/rules", func(w http.ResponseWriter, r *http.Request) {
+		maybeDelay()
+		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		writeTestJSON(t, w, map[string]any{"providers": opts.ruleProviders})
 	})
 	mux.HandleFunc("/dns/query", func(w http.ResponseWriter, r *http.Request) {
 		maybeDelay()
@@ -475,6 +526,27 @@ func testProviders() map[string]any {
 			"vehicleType": "File",
 			"updatedAt":   "2026-05-07T03:00:00Z",
 			"proxies":     []map[string]any{},
+		},
+	}
+}
+
+func testRuleProviders() map[string]any {
+	return map[string]any{
+		"geoip": map[string]any{
+			"name":        "geoip",
+			"type":        "Rule",
+			"vehicleType": "HTTP",
+			"behavior":    "IPCIDR",
+			"ruleCount":   1024,
+			"updatedAt":   "2026-05-07T05:00:00Z",
+		},
+		"rejects": map[string]any{
+			"name":        "rejects",
+			"type":        "Rule",
+			"vehicleType": "File",
+			"behavior":    "Domain",
+			"ruleCount":   3,
+			"updatedAt":   "2026-05-07T04:30:00Z",
 		},
 	}
 }
