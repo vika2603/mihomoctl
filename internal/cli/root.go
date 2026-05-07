@@ -107,7 +107,12 @@ func normalizeCobraErr(err error) error {
 		return err
 	}
 	if strings.Contains(err.Error(), `unknown command "group"`) {
-		return usage("%v. The v1.0 command namespace is \"groups\"; use \"mihomoctl groups delay <name>\".", err)
+		// Replace the cobra error (and any auto-generated fuzzy suggestion) with
+		// an explicit single-sentence v1.0 migration hint. The fuzzy suggester
+		// added by PR #16 would otherwise sandwich its multiline "Did you mean
+		// this?" block in the middle of this guidance, leaving a dangling "."
+		// prefix on the migration sentence (Iris cycle 9 drift catch).
+		return usage(`unknown command "group" for "mihomoctl"; the v1.0 command namespace is "groups". Use "mihomoctl groups delay <name>".`)
 	}
 	return usage("%v", err)
 }
