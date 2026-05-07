@@ -15,9 +15,11 @@ import (
 
 type connectionsWatchOptions struct {
 	filter               string
+	limit                int
 	interval             time.Duration
 	noReconnect          bool
 	maxReconnectAttempts int
+	tui                  bool
 }
 
 func newConnectionsWatchCommand(out io.Writer, cfg *config) *cobra.Command {
@@ -28,13 +30,17 @@ func newConnectionsWatchCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Stream active connection snapshots from mihomo",
-		Long:  "Stream active mihomo connection snapshots over WebSocket until interrupted. Filters are applied locally after each event is received.",
+		Long: "Stream active mihomo connection snapshots over WebSocket until interrupted.\n\n" +
+			"TTY output renders an in-place table; non-TTY output appends tab-separated rows; --json emits NDJSON.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("connections watch takes no arguments")
 			}
 			if opts.interval <= 0 {
 				return usage("--interval must be > 0")
+			}
+			if opts.limit < 0 {
+				return usage("--limit must be >= 0")
 			}
 			if opts.maxReconnectAttempts < 0 {
 				return usage("--max-reconnect-attempts must be >= 0")
@@ -48,6 +54,7 @@ func newConnectionsWatchCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.filter, "filter", "", "CLI-local substring filter against host, destination, source, or rule")
+	cmd.Flags().IntVar(&opts.limit, "limit", opts.limit, "maximum connections to show per snapshot; 0 means unlimited")
 	cmd.Flags().DurationVar(&opts.interval, "interval", opts.interval, "mihomo websocket poll interval")
 	cmd.Flags().BoolVar(&opts.noReconnect, "no-reconnect", false, "do not reconnect after websocket disconnects")
 	cmd.Flags().IntVar(&opts.maxReconnectAttempts, "max-reconnect-attempts", opts.maxReconnectAttempts, "maximum consecutive reconnect failures before exiting; 0 means unbounded")
@@ -55,10 +62,20 @@ func newConnectionsWatchCommand(out io.Writer, cfg *config) *cobra.Command {
 }
 
 func runConnectionsWatch(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, opts connectionsWatchOptions) error {
+	opts.tui = !cfg.jsonOut && render.SupportsInteractiveTerminal(out)
+	if opts.tui {
+		if err := streaming.WriteText(out, render.EnterAltScreen()); err != nil {
+			return err
+		}
+		defer func() { _ = streaming.WriteText(out, render.ExitAltScreen()) }()
+	}
 	failures := 0
 	for {
 		hadEvent, err := watchOnce(ctx, out, cfg, client, opts)
 		if err == nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
+		if exitsOK(err) {
 			return nil
 		}
 		if ctx.Err() != nil {
@@ -126,4 +143,9 @@ func mapWatchErr(err error) error {
 		return mapErr(err)
 	}
 	return render.NewError(exitTempFail, fmt.Sprintf("mihomo websocket stream disconnected: %v", err), "websocket_disconnected", nil)
+}
+
+func exitsOK(err error) bool {
+	var ce *cliError
+	return errors.As(err, &ce) && ce.Code == exitOK
 }

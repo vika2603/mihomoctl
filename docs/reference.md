@@ -18,11 +18,11 @@ Fifteen commands in v0.4 (counted as leaves; sustains the v0.3 reference v1.7 le
 | `proxy list` | List every selectable proxy group with the currently-selected node. |
 | `proxy set <group> <node>` | Select a node in a proxy group. |
 | `group delay <group>` | Probe candidate-node latency for a proxy group (URLTest / Selector / Fallback / LoadBalance). _v0.2 added._ |
-| `connections list` | Snapshot of currently-active mihomo proxy connections. _v0.2 added._ |
+| `connections list` _(also: `conns list`)_ | Snapshot of currently-active mihomo proxy connections. _v0.2 added; v0.4.1 adds `conns` alias and IEC bytes formatting on `up`/`down` columns._ |
 | `rules list` | Snapshot of mihomo's matching rules. _v0.3 added._ |
 | `providers list` | Snapshot of proxy providers (subscription / inline / file / compatible) with current health state. _v0.3 added._ |
 | `providers healthcheck <name>` | Trigger mihomo-side health refresh on a Proxy provider and return a provider-level summary. _v0.3 added._ |
-| `connections watch` | Stream live mihomo connection events over a WebSocket until Ctrl-C. _v0.4 added._ |
+| `connections watch` _(also: `conns watch`)_ | Stream live mihomo connection events over a WebSocket until Ctrl-C. TTY default renders an in-place table; non-TTY/pipe streams tab-separated row append. _v0.4 added; v0.4.1 adds `--limit`, `conns` alias, IEC bytes, and TTY in-place rendering._ |
 | `dns query <domain>` | Resolve a domain through mihomo's internal DNS resolver (read-only). _v0.4 added._ |
 | `cache clear fakeip` | Flush mihomo's fake-IP map (low-impact mutation). _v0.4 added._ |
 | `cache clear dns` | Flush mihomo's DNS resolver cache (low-impact mutation). _v0.4 added._ |
@@ -1088,10 +1088,12 @@ Stream live mihomo connection events over a WebSocket until interrupted. Use thi
 ### Synopsis
 
 ```
-mihomoctl connections watch [--filter PATTERN] [--interval DURATION]
+mihomoctl connections watch [--limit N] [--filter PATTERN] [--interval DURATION]
                             [--no-reconnect] [--max-reconnect-attempts N]
                             [--json] [--endpoint URL] [--secret VALUE]
 ```
+
+> **Alias** _(v0.4.1)_: `mihomoctl conns watch` is equivalent to `mihomoctl connections watch`. The long form is retained.
 
 ### Transport and auth
 
@@ -1103,6 +1105,7 @@ mihomoctl connections watch [--filter PATTERN] [--interval DURATION]
 
 | Flag | Default | Notes |
 | --- | --- | --- |
+| `--limit <N>` _(v0.4.1)_ | `0` (unlimited) | Cap snapshot output at N connections per emit. Applies to all three output paths: TTY in-place table (renders top N rows), non-TTY tab-separated row append (emits first N rows per snapshot), and `--json` NDJSON (emits first N records per snapshot). `--limit 0` or omitted preserves the v0.4 unlimited default. Per-snapshot ordering is `started_at` descending (matches `connections list`). |
 | `--filter <pattern>` | _none_ | **CLI-local** substring match against `host` / `destination` / `source` / `rule` (OR semantics, case-insensitive). The CLI receives mihomo's full upstream event stream and filters client-side. mihomo's `/connections` WebSocket does not accept a server-side filter parameter, so dropping events upstream is not possible in v0.4. |
 | `--interval <duration>` | _server default_ | Passthrough to mihomo's `?interval=ms` query parameter — controls how often the upstream pushes connection-table snapshots. |
 | `--no-reconnect` | off | If the WebSocket disconnects, exit immediately instead of retrying. |
@@ -1110,14 +1113,43 @@ mihomoctl connections watch [--filter PATTERN] [--interval DURATION]
 
 ### Output (human-readable)
 
-Each tick from mihomo's WebSocket emits a snapshot of currently-active connections (filtered if `--filter` is set). Each snapshot prints a header row followed by one row per matching connection:
+The watcher behaves differently on a TTY versus non-TTY/pipe; both share the same upstream snapshot stream and filter semantics, only the rendering differs. `--json` selects a third path that ignores TTY detection (see [Output (`--json`)](#output-json) below).
+
+#### TTY (interactive default) _(v0.4.1)_
+
+When stdout is an interactive terminal (`os.File.Stat().Mode() & os.ModeCharDevice` is set, and `TERM` is not `dumb`), the watcher renders an in-place table that redraws on each upstream snapshot, similar to `top` / `htop`:
+
+- **Alternate-screen** is entered on start and restored on exit, so the operator's scrollback is preserved.
+- A **fixed header** at the top shows: `received_at` (UTC) of the most recent snapshot, total match count after filter, shown row count after `--limit`, active `--filter` value (or `(no filter)`), and the active `--limit` value.
+- The body is a **table** with the same columns as `connections list` (`started_at`, `source`, `destination`, `network`, `rule`, `chains`, `up/down`), sorted `started_at` descending. The `up/down` column uses IEC binary units (`B` / `KiB` / `MiB` / `GiB`) — see [`connections list` Output](#mihomoctl-connections-list).
+- **Empty snapshot** (no connections after filter) shows `(no matching active connections — watcher is live)` in the body to confirm the stream is healthy.
+- **Ctrl-C** restores the alternate-screen and exits `0`.
+- **Sober styling**: single color, no gradient or alarm color, light table border, bold for emphasis (e.g. match count). The `NO_COLOR` env var disables all color rendering.
+- **Terminal width fallback**: if the terminal is narrower than ~60 columns, the table falls back to the key columns (`id` / `source` / `destination` / `up` / `down`) and wider fields are truncated to fit.
+
+```
+mihomoctl connections watch
+received_at: 2026-05-07T03:23:16Z  matches: 12  shown: 1
+filter: (no filter)  limit: 1
+╭────────────────────┬──────────────────┬─────────────────┬───┬──────────────────────────────┬─────────────┬─────────────╮
+│started_at          │source            │destination      │net│rule                          │chains       │up/down      │
+├────────────────────┼──────────────────┼─────────────────┼───┼──────────────────────────────┼─────────────┼─────────────┤
+│2026-05-07T03:00:01Z│192.168.1.10:55322│142.250.80.46:443│tcp│DOMAIN-SUFFIX,google.com,PROXY│PROXY > JP-01│256 B/1.0 KiB│
+╰────────────────────┴──────────────────┴─────────────────┴───┴──────────────────────────────┴─────────────┴─────────────╯
+```
+
+#### Non-TTY / pipe (no `--json`)
+
+When stdout is **not** a TTY (pipe, redirect to file, `TERM=dumb`), the watcher emits the same per-snapshot tab-separated row append as v0.4 — preserved for backward compatibility with `connections watch | grep ...` scripts:
 
 ```
 received_at	started_at	source	destination	network	rule	chains	up/down
-2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55320	1.1.1.1:443	tcp	DOMAIN-SUFFIX,cloudflare.com,PROXY	PROXY > JP-01	890/2456
+2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55320	1.1.1.1:443	tcp	DOMAIN-SUFFIX,cloudflare.com,PROXY	PROXY > JP-01	890 B/2.4 KiB
 ```
 
-Snapshots that match no connections (after filter) print `no matching active connections` instead of an empty table — non-empty so the user knows the watcher is alive. The header repeats on every non-empty snapshot, mirroring tools like `watch -d ls`.
+The header row repeats on every non-empty snapshot (mirroring `watch -d ls`). Snapshots that match no connections (after filter) print `no matching active connections` instead of an empty table. The `up/down` column uses IEC binary units _(v0.4.1 — was raw bytes in v0.4)_.
+
+> **v0.4.1 note**: this non-TTY path is byte-identical to v0.4's default human output **except for the `up/down` IEC unit formatting**. Scripts that previously parsed `up/down` as raw integers should read `--json` `upload_bytes` / `download_bytes` instead (`int64`, contract-stable).
 
 > **Important — these are snapshots, not per-event open/close pushes.** mihomo's `/connections` WebSocket exposes a periodic poll of the entire connection table; mihomoctl forwards each poll as one event. Connection-level transitions (open / close) are inferred by diffing successive snapshots client-side; v0.4 does not expose `event_action: "open"|"close"` because the upstream wire does not. Per the implementation-truth pattern (same path as v0.3 `vehicle_type=HTTP`), the docs reflect what the wire actually emits.
 
@@ -1163,26 +1195,32 @@ When `--no-reconnect` is set, the first disconnect exits immediately — exit `7
 ### Examples
 
 ```bash
-# Stream until Ctrl-C
-$ mihomoctl connections watch
-received_at	started_at	source	destination	network	rule	chains	up/down
-2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55320	1.1.1.1:443	tcp	DOMAIN-SUFFIX,cloudflare.com,PROXY	PROXY > JP-01	890/2456
-2026-05-07T03:00:05Z	2026-05-07T03:00:00Z	192.168.1.10:55321	8.8.8.8:443	tcp	GEOIP,US,PROXY	PROXY > JP-01	1234/5678
+# TTY default (interactive) — in-place table, redraws on each snapshot, Ctrl-C to exit (v0.4.1)
+$ mihomoctl connections watch --filter google.com
+# (alternate-screen entered; sticky header + table redrawn per snapshot)
 ^C
 
-# Filter to a particular destination, peek at the first 5 lines including the header
+# Alias form (v0.4.1) — equivalent to `mihomoctl connections watch`
+$ mihomoctl conns watch --filter google.com
+
+# Pipe / non-TTY — falls back to tab-separated row append (v0.4 behavior preserved, IEC bytes in v0.4.1)
 $ mihomoctl connections watch --filter google.com | head -5
 received_at	started_at	source	destination	network	rule	chains	up/down
-2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55322	142.250.80.46:443	tcp	DOMAIN-SUFFIX,google.com,PROXY	PROXY > JP-01	256/1024
+2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55322	142.250.80.46:443	tcp	DOMAIN-SUFFIX,google.com,PROXY	PROXY > JP-01	256 B/1.0 KiB
 
-# JSON mode — one event object per line, suppress empty snapshots
+# Cap snapshot output at 10 connections per emit (v0.4.1 G1) — applies to TTY/non-TTY/JSON
+$ mihomoctl connections watch --limit 10
+
+# JSON mode — NDJSON literal regardless of TTY; one event object per line; suppress empty snapshots
 $ mihomoctl connections watch --filter google.com --json
-{"type":"event","data":{"event_action":"snapshot","received_at":"2026-05-07T03:00:05Z","connections":[{"started_at":"2026-05-07T03:00:01Z","source":"192.168.1.10:55322","destination":"142.250.80.46:443","network":"tcp","rule":"DOMAIN-SUFFIX,google.com,PROXY","chains":["PROXY","JP-01"],"up":256,"down":1024}]}}
+{"type":"event","data":{"event_action":"snapshot","received_at":"2026-05-07T03:23:28Z","connections":[{"id":"c1","started_at":"2026-05-07T03:00:01Z","network":"tcp","source":"192.168.1.10:55322","destination":"142.250.80.46:443","host":"google.com","rule":"DOMAIN-SUFFIX,google.com,PROXY","chains":["PROXY","JP-01"],"upload_bytes":256,"download_bytes":1024}]}}
 
-# Supervised long-running session — unbounded reconnect, with structured error rows on every flap
+# Supervised long-running session — unbounded reconnect, structured error rows on every flap
 $ mihomoctl connections watch --max-reconnect-attempts 0 --json | jq -c '. | select(.type=="error")'
 {"type":"error","error":{"code":"websocket_disconnected","category":"tempfail","message":"mihomo websocket stream disconnected: ..."}}
 ```
+
+> **`--json` field name note**: the JSON output uses `upload_bytes` / `download_bytes` (`int64`, contract-stable from v0.4). The human output's `up`/`down` column displays IEC binary formatted strings — these are display-only and not part of the JSON contract.
 
 ---
 
@@ -1316,7 +1354,7 @@ mihomoctl distinguishes two mutation classes:
 mihomoctl cache clear <fakeip|dns|all> [--json] [--endpoint URL] [--secret VALUE]
 ```
 
-A bare `cache clear` (no subcommand) exits `64` with a usage error.
+A bare `cache clear` (no subcommand) exits `64` with a usage error _(v0.4.1: error wording is now actionable — `cache clear requires a target. Use 'cache clear fakeip', 'cache clear dns', or 'cache clear all'.`)_.
 
 ### Subcommands
 
@@ -1528,7 +1566,8 @@ Migration: scripts that grep `stderr` for human wording continue to work — the
 | `node "XYZ" not found in group "PROXY", available: ...` | 66 | Run `mihomoctl proxy list`; check the candidate list for that group. |
 | `group "X" type "Y" does not support delay test, applicable types: URLTest, Selector, Fallback, LoadBalance` | 64 | `Direct` and `Reject` groups have no candidates to probe; only the four listed types accept `group delay`. |
 | `--delay-timeout must be > 0` | 64 | Use a positive duration (e.g. `--delay-timeout 3s`). |
-| `--limit must be > 0` | 64 | Use `--limit 1` or higher. To return everything, pass a large cap (the snapshot is bounded by mihomo's connection / rule table). |
+| `--limit must be > 0` | 64 | `connections list` / `rules list` require `--limit 1` or higher. To return everything, pass a large cap (the snapshot is bounded by mihomo's connection / rule table). |
+| `--limit must be >= 0` | 64 | `connections watch` accepts `--limit 0` as unlimited; negative values are invalid. |
 | `proxy provider "X" not found, available: ...` | 66 | Run `mihomoctl providers list` for valid proxy provider names. **Note**: rule provider names also trigger this error in v0.3 — rule providers are out of scope and not present in the proxy provider namespace, so the lookup fails as not-found. |
 
 ## Out of scope for v0.4

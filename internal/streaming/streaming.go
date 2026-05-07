@@ -42,7 +42,11 @@ func WriteNDJSON(out io.Writer, v any) error {
 }
 
 func WriteTextLine(out io.Writer, line string) error {
-	if _, err := fmt.Fprintln(out, line); err != nil {
+	return WriteText(out, line+"\n")
+}
+
+func WriteText(out io.Writer, text string) error {
+	if _, err := io.WriteString(out, text); err != nil {
 		if IsBrokenPipe(err) {
 			return render.NewError(render.ExitOK, "broken stdout pipe", "", nil)
 		}
