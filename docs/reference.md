@@ -1474,7 +1474,7 @@ v0.5 adds an eighth category, `mutation_aborted`, for the `config reload` / `ser
 
 ### Initial code set (v0.4)
 
-The following codes are guaranteed by the v0.4 central renderer (verified against source `8152db12` on the canonical repo). Scripts can switch on any of them.
+The following codes are guaranteed by the v0.4 central renderer in `internal/render` (verified against v0.4.0 release tag, canonical `52bed797`; see ADR-0013 for the post-v0.4 5-package split). Scripts can switch on any of them.
 
 | Code | Category | Used by |
 | --- | --- | --- |
@@ -1560,5 +1560,5 @@ These ship in later versions or are permanently excluded:
 
 - [Quickstart](./quickstart.md) — install, first-switch, and the v0.2 test/switch/verify loop.
 - [CHANGELOG](./CHANGELOG.md) — release history. Read before upgrading minor 0.x releases (pre-1.0 contract may shift; every change is documented).
-- ADR-0002 — architecture and exit-code contract source of truth. Amended by ADR-0004 (pre-1.0 stability framework), ADR-0005 (cobra dependency boundary in v0.1.2+), and ADR-0006 (conditional package boundaries: 2-command band stays single-package, 3+ commands triggers `internal/cli` split).
+- ADR-0002 — architecture and exit-code contract source of truth. Amended by ADR-0004 (pre-1.0 stability framework), ADR-0005 (cobra dependency boundary in v0.1.2+), ADR-0006 (conditional package boundaries: 2-command band stays single-package, 3+ commands triggers `internal/cli` split), and ADR-0013 (v0.4 5-package amend on top of ADR-0006: `cmd/mihomoctl` thin entry + `internal/cli` cobra wiring + `internal/mihomo` client + `internal/render` ADR-0010 envelope/error/JSON + `internal/streaming` reconnect/backoff/NDJSON/EPIPE/1-slot drop-old).
 - [mihomo external-controller docs](https://wiki.metacubex.one/en/api/) — upstream API reference. Note that mihomoctl normalizes some shapes (e.g. flat `connections` schema vs upstream nested `metadata`); the public mihomoctl JSON contract is what this reference documents, not the upstream wire format.
