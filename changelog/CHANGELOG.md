@@ -4,6 +4,87 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 ## [Unreleased]
 
+
+### Added
+
+- `mihomoctl connections watch` — stream live mihomo connection events over a WebSocket until Ctrl-C. Implements the **streaming pattern** locked in [ADR-0007](../docs/adr/0007-streaming-pattern.md) (canonical `3f123129`): WS-only transport, `Authorization: Bearer <secret>` HTTP header at handshake (**not** `?token=` query param), and supervised reconnect with exponential backoff. Flags: `--filter <pattern>` (CLI-local substring match against `host` / `destination` / `source` / `rule`, OR semantics — **events are filtered client-side after the CLI receives mihomo's full upstream stream; mihomo's `/connections` WebSocket does not accept a server-side filter parameter**); `--interval <duration>` (passthrough to mihomo's `?interval=ms` query, controls upstream push cadence); `--no-reconnect` (exit immediately on disconnect, no retry); `--max-reconnect-attempts <N>` (default `100`; `0` = unbounded for supervised sessions; counter resets on every successful event). With `--json`, output is NDJSON, one object per line, two `type` discriminants: `{"type":"event","data":{...}}` for connection events and `{"type":"error","error":{"code","category","message","details"}}` for streaming-stage errors (envelope shared with ADR-0010 below). Exit codes: `EPIPE` (downstream pipe closed, e.g. `| head`) → `0` (silent success); other write errors → `73`; reconnect attempts exhausted → `75`; `Ctrl-C` → `0`. Global `--timeout` applies to the initial WebSocket connect and per-read heartbeat stall (not to the lifetime of the stream itself). (PR <TBD>, PRD-0004, ADR-0006 stay-in-band, ADR-0007)
+- `mihomoctl dns query <domain>` — resolve a domain through mihomo's internal DNS resolver (read-only). Flag: `--type <record_type>` (default `A`; passthrough to mihomo; invalid type is rejected by mihomoctl before contacting the controller and exits `64`). JSON shape `{domain, query_type, status, answers: [{name, type, ttl, data}]}` (4-field envelope; field names are CLI-normalized snake_case from mihomo's upstream miekg/dns capitalized fields). DNS `NXDOMAIN` is **exit 0** with `{"status":"NXDOMAIN","answers":[]}` — sysexits convention: the CLI command succeeded; the DNS protocol layer reporting "no such domain" is not a CLI-level "not found". `--server`, `source`, and `latency_ms` fields are explicitly out of scope for v0.4 (Otto pre-research did not confirm a wire interface; tracked behind user-evidence triggers for v0.5+). (PR <TBD>, PRD-0004)
+- `mihomoctl cache clear <fakeip|dns|all>` — flush mihomo's internal caches as a **low-impact ephemeral mutation**. Three subcommands: `cache clear fakeip` flushes the fake-IP map; `cache clear dns` flushes the DNS resolver cache; `cache clear all` hits both endpoints in sequence. Bare `cache clear` (no subcommand) → exit `64` usage error. Side effect: short-term DNS lookups are repeated against upstream resolvers; **active connections, mihomo configuration, and the running service are unaffected**. This classification is intentionally distinct from the v0.5 `reload` / `restart` planned high-impact mutations (ADR-0008 confirmation-token pattern); `cache clear` does not require `--yes` or a confirmation token. JSON shape `{cache, cleared: true}` per subcommand on success. `cache clear all` partial failure is reported under the top-level ADR-0010 envelope with per-cache results in `details` — successful caches are **not rolled back**. (PR <TBD>, PRD-0004, ADR-0008 §4 Consequences 4 explicit classification)
+- **JSON error envelope (cross-cutting)**. All `mihomoctl --json` failure paths now share a single envelope locked in [ADR-0010](../docs/adr/0010-error-envelope-schema.md) (canonical `9c414ffd`):
+
+  ```json
+  {
+    "error": {
+      "code": "<stable_identifier>",
+      "category": "<sysexits_aligned>",
+      "message": "<human_readable>",
+      "details": { ... }
+    }
+  }
+  ```
+
+  `code` and `category` are part of the contract; `message` is documentation-for-recognition and may evolve between minor 0.x releases without bumping the contract. The seven categories (per [ADR-0010](../docs/adr/0010-error-envelope-schema.md) v0.2 canonical) are sysexits-aligned: `usage` (64), `not_found` (66), `software` (70), `system` (71), `cant_output` (73), `tempfail` (75), and `noperm` (77). v0.5 adds an eighth, `mutation_aborted`, for the `config reload` / `service restart` family per ADR-0008. See [reference § JSON error envelope schema](../docs/reference.md#json-error-envelope-schema) for the full code/category contract and a side-by-side example showing a v0.3 `status --json` failure rendered in the new envelope alongside a v0.4 `cache clear all --json` partial failure.
+
+### Breaking
+
+- **JSON error envelope retroactive align across v0.1–v0.3**. The v0.4 envelope above is **retrofitted to all 11 commands shipped in v0.1–v0.3** (`status`, `mode get`, `mode set`, `proxy list`, `proxy set`, `group delay`, `connections list`, `rules list`, `providers list`, `providers healthcheck`, plus root error rendering). `--json` failure output for these commands now emits the `{error: {code, category, message, details?}}` envelope; previously each command rendered its own ad-hoc error string under `--json`. **Migration**: scripts that grep `stderr` for human error wording continue to work — the envelope `message` field is the same wording. Scripts that parse the JSON failure body MUST switch to reading `.error.code` (stable) or `.error.category` (stable) rather than positional fields. **Pin to an exact `0.x.y`** if your script depends on the prior pre-envelope failure shape; per the pre-1.0 stability framework ([ADR-0004](../docs/adr/0004-pre-1.0-stability-framework.md)) breaking changes are allowed across 0.x minor versions with a migration note, which this entry serves as. Affected commands' migration examples are listed in [reference § JSON error envelope schema](../docs/reference.md#json-error-envelope-schema). (ADR-0010, PR <TBD>)
+
+### Schema notes
+
+- `connections watch --json` NDJSON envelope is **two-discriminant**: `{"type":"event"}` rows carry connection events, `{"type":"error"}` rows carry streaming-stage errors using the same shape as the cross-cutting JSON error envelope. A reader that consumes `connections watch --json` MUST branch on `.type` before reading further fields — assuming every line is an event will misread the error rows. (ADR-0007 v0.2 §Event contract)
+- `dns query --json` `status` is the upstream DNS RCODE name (`NOERROR`, `NXDOMAIN`, `SERVFAIL`, …); CLI exit code follows sysexits semantics independently — `NOERROR` and `NXDOMAIN` are both exit 0 (the query itself succeeded), while controller-unreachable / `SERVFAIL` route to controller-error categories per the envelope above.
+- `cache clear all --json` partial failure: top-level envelope is the standard error shape; per-cache results live in `details: {cache: "all", results: [{cache, cleared, error?}]}`. Successful caches are not rolled back — the operation is intentionally non-transactional, consistent with mihomo's underlying endpoints.
+
+### Internal
+
+- Central error renderer added at `internal/cli/error_renderer.go` — single `renderError(err, jsonMode bool)` entry point shared by all commands, replacing per-command ad-hoc rendering. Refactor lands first (no wire-shape change), then v0.4's envelope is layered on top per Vince merge gate item 9. (PR <TBD>, ADR-0010)
+- `internal/mihomo` client gains `Connections.Watch(ctx, opts)` (WebSocket transport with reconnect supervisor), `DNS.Query(ctx, domain, queryType)`, `Cache.FakeIPFlush(ctx)`, `Cache.DNSFlush(ctx)`, and `Cache.ClearAll(ctx)`. WebSocket transport is internal-only — exposing a streaming client surface in `internal/streaming` waits for the second streaming command (`logs watch` / `traffic watch`) per ADR-0006's "stay in band until a second instance shows up" rule.
+- Secret-leak `--help` regression coverage extended to **21 / 21** command surfaces cumulative (v0.3's 12 + v0.4's 9 new: `connections watch --help`, `dns --help`, `dns query --help`, `cache --help`, `cache clear --help`, `cache clear fakeip --help`, `cache clear dns --help`, `cache clear all --help`, plus the new envelope error wording's `details` redaction guard). The auth functional regression `TestSecretEnvUsedAtExecution` continues unchanged from v0.2.
+
+### Stability
+
+- v0.4 introduces two new contract surfaces (the streaming NDJSON envelope from ADR-0007 and the cross-cutting JSON error envelope from ADR-0010). Both are **stable identifiers** (`type`, `code`, `category`) intended to survive into v1.0; surrounding wording and `details` payloads remain documentation-for-recognition under the pre-1.0 two-phase rule.
+- The v1.0 contract-lock mechanism is now defined: [ADR-0011](../docs/adr/0011-contract-freeze.md) (canonical `81dda8c5`) introduces a JSON contract manifest and golden contract test, scheduled to land in v0.8. v0.4 ships under the same pre-1.0 two-phase rule as prior releases — the manifest and golden test do **not** retroactively freeze v0.4 shapes.
+- mihomoctl is still pre-1.0. Scripts depending on the v0.4 envelopes (streaming NDJSON, JSON error envelope, `cache clear` shape) should pin to an exact `0.4.x` and read this file before upgrading.
+
+[Unreleased]: https://github.com/vika2603/mihomoctl/compare/release/v0.3.0...HEAD
+
+## [0.3.0] - 2026-05-07
+
+<!--
+Release artifacts (Iris vika acceptance PASS, msg=d9907e47):
+- source r18 commit f2e31e57ab3cffeaf32e438ca032676a29506155
+- source SHA256 445df94b5ec3024c0ada9fbe9e631c4d84b9298ed87a54cb2b7a8db1db2c9c58
+- platform binaries (linux/amd64, linux/arm64, darwin/amd64): attachment IDs pending Iris release-attachment publish (TBD: backfill when published)
+- temp public source repo (used during attachment 5xx workaround): https://github.com/vika2603/mihomoctl-r18-1778115158.git (commit f2e31e57)
+-->
+
+### Added
+
+- `mihomoctl rules list` — snapshot of mihomo's matching rules. Flags: `--limit <n>` (default `50`, must be `>= 1`; `--limit 0` is exit 64); `--filter <pattern>` (substring match against `type`, `payload`, or `proxy`, OR semantics, case-insensitive). JSON shape `{total, limit, rules: [{idx, type, payload, proxy}]}`; `total` is the count after filter and **before** `--limit` truncation, so scripts can detect when output was capped (same envelope semantics as `connections list`). The per-rule `idx` field is the rule's evaluation order in mihomo's matcher (0-based); it is the only field that ranks a rule against its peers. Sorted by `idx` ascending (the order mihomo's matcher applies). (PR <TBD>, PRD-0003, ADR-0006 3+ command band)
+- `mihomoctl providers list` — snapshot of mihomo's **proxy providers** with current health state. JSON shape `{total, limit, providers: [{name, type, vehicle_type, health, node_count, updated_at}]}`. The `limit` field is a passthrough equal to `total` — `--limit` is **not** exposed as a flag in v0.3 (provider counts are typically small, ≤10). The `type` field is always `"Proxy"` in v0.3 (the namespace is proxy providers only); it is retained as a forward-compat namespace signal — Rule providers use a different upstream endpoint and are out of scope for v0.3. The `vehicle_type` field is whatever mihomo's controller emits — common values include `HTTP` (subscription pulled over HTTP), `File`, `Inline`, and `Compatible`; treat unknown values as opaque. Sorted by `name` ascending. (PR <TBD>, PRD-0003)
+- `mihomoctl providers healthcheck <name>` — trigger mihomo-side health refresh on a Proxy provider and return a provider-level summary. JSON shape `{provider, type: "Proxy", vehicle_type, health, node_count, updated_at, triggered_at}` (7 fields = `providers list` row + `triggered_at`). The `triggered_at` field is an RFC 3339 UTC timestamp set by mihomoctl at trigger time (CLI-local, **not** read from mihomo); it confirms the refresh fired in this invocation, distinct from `updated_at` which is mihomo's own subscription/cache timestamp. (PR <TBD>, PRD-0003)
+
+### Schema notes
+
+- `providers healthcheck --json` returns a **provider-level summary**, not per-node probe results. The `results: [{node, latency_ms, status}]` schema introduced in v0.2 for `group delay` remains specific to `group delay` — v0.3 does not extend it to `providers healthcheck`. Future per-node probe commands may reintroduce the standardized `results: [...]` shape (tracked behind ADR-0008 mutation safety batch and user-evidence triggers); v0.3 explicitly does not. Read this when scripting against multiple test/probe commands so a single `jq` filter does not assume the shape is shared.
+- `rules list --json` `total` is the count after `--filter` is applied but before `--limit` truncation — same envelope semantics as `connections list`. Detect truncation with `total > (.rules | length)`.
+- `providers list --json` `limit` is documented as an effective returned cap / passthrough; in v0.3 it is always `= total` since the command does not paginate. Do **not** assume `limit` exists across every mihomoctl JSON envelope — only commands that take `--limit` (or have schema parity with one that does) include it.
+- All v0.3 commands follow deterministic ordering: `rules list` by rule index ascending, `providers list` by `name` ascending. Same human and JSON ordering — JSON does not re-sort relative to human output. (Locked alongside the v0.2 `group delay` / `connections list` ordering rules.)
+
+### Scope guard
+
+- `providers healthcheck` is **Proxy providers only**. Calling `providers healthcheck <rule_provider_name>` returns exit 66 `proxy provider "X" not found, available: A, B, C` — rule providers are not in the proxy provider namespace, so the lookup fails as not-found rather than as a usage error. This boundary is locked and will not collapse if rule providers later enter scope (a separate `rule-providers list` / `rule-providers healthcheck` command tree would be added; the existing `providers` tree continues to mean proxy providers).
+
+### Internal
+
+- Package layout escalates per ADR-0006 to the **3+ command default band**. The `cmd/mihomoctl` package shrinks to `main` and root wiring only; CLI tree, output formatting, error mapping, and argument validation move to `internal/cli`. The `internal/mihomo` API client gains `Rules.List(ctx, opts)`, `ProxyProviders.List(ctx)`, and `ProxyProviders.Healthcheck(ctx, name)` methods. No `internal/auth` split (env-first secret + flag override is small enough to live inline; v1.0-full triggers like profiles, multi-controller, TLS trust, and token storage are not in v0.3 scope). (PR <TBD>, ADR-0006)
+- `TestSecretEnvDoesNotLeakInHelp` regression extended to cover the **5 new v0.3 help surfaces** (`rules --help`, `rules list --help`, `providers --help`, `providers list --help`, `providers healthcheck --help`), making cumulative coverage **12/12** command surfaces (v0.2's 7 surfaces continue to be guarded). The auth functional regression `TestSecretEnvUsedAtExecution` is unchanged from v0.2 and continues to assert env-first auth still authenticates. Together these double-guard the ADR-0002 secret material boundary across every shipped help surface.
+
+### Stability
+
+- mihomoctl is still pre-1.0. The `--json` shape introduced for `rules list` / `providers list` / `providers healthcheck`, the `--limit` / `--filter` flag semantics on `rules list`, and the `triggered_at` timestamp contract may change between minor 0.x releases per the existing two-phase rule (see [reference § Stability and JSON contract](./reference.md#stability-and-json-contract)). v0.3 is not a contract freeze. Scripts that rely on the shapes above should pin to an exact 0.3.x and read this file before upgrading.
+
 ## [0.2.0] - 2026-05-07
 
 ### Added
@@ -108,7 +189,7 @@ mihomoctl follows a two-phase stability rule (see [reference § Stability and JS
 - Service management (`start`/`stop`/`install` of mihomo itself).
 - mihomoctl-side configuration files.
 
-[Unreleased]: <TBD compare URL>
+[0.3.0]: <TBD release URL>
 [0.2.0]: <TBD release URL>
 [0.1.3]: <TBD release URL>
 [0.1.2]: <TBD release URL>
