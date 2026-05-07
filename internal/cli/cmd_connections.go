@@ -53,6 +53,7 @@ func newConnectionsCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newConnectionsListCommand(out, cfg))
+	cmd.AddCommand(newConnectionsWatchCommand(out, cfg))
 	return cmd
 }
 

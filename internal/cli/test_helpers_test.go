@@ -30,6 +30,11 @@ type fakeOptions struct {
 	providers       map[string]any
 	healthcheckCode int
 	onHealthcheck   func(provider string)
+	dnsCode         int
+	dnsBody         string
+	fakeIPFlushCode int
+	dnsFlushCode    int
+	onCacheFlush    func(path string)
 	delay           time.Duration
 	onProxySet      func(uri string)
 }
@@ -65,6 +70,15 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 	}
 	if opts.healthcheckCode == 0 {
 		opts.healthcheckCode = http.StatusNoContent
+	}
+	if opts.dnsCode == 0 {
+		opts.dnsCode = http.StatusOK
+	}
+	if opts.fakeIPFlushCode == 0 {
+		opts.fakeIPFlushCode = http.StatusNoContent
+	}
+	if opts.dnsFlushCode == 0 {
+		opts.dnsFlushCode = http.StatusNoContent
 	}
 	if opts.proxies == nil {
 		opts.proxies = map[string]any{
@@ -263,6 +277,56 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 			opts.onHealthcheck(provider)
 		}
 		w.WriteHeader(opts.healthcheckCode)
+	})
+	mux.HandleFunc("/dns/query", func(w http.ResponseWriter, r *http.Request) {
+		maybeDelay()
+		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(opts.dnsCode)
+		if opts.dnsBody != "" {
+			_, _ = w.Write([]byte(opts.dnsBody))
+			return
+		}
+		if opts.dnsCode >= 200 && opts.dnsCode < 300 {
+			writeTestJSON(t, w, map[string]any{
+				"Status":   0,
+				"Question": []map[string]any{{"name": r.URL.Query().Get("name") + ".", "type": 1}},
+				"Answer":   []map[string]any{{"name": r.URL.Query().Get("name") + ".", "type": 1, "TTL": 60, "data": "198.51.100.10"}},
+			})
+		}
+	})
+	mux.HandleFunc("/cache/fakeip/flush", func(w http.ResponseWriter, r *http.Request) {
+		maybeDelay()
+		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if opts.onCacheFlush != nil {
+			opts.onCacheFlush(r.URL.Path)
+		}
+		w.WriteHeader(opts.fakeIPFlushCode)
+	})
+	mux.HandleFunc("/cache/dns/flush", func(w http.ResponseWriter, r *http.Request) {
+		maybeDelay()
+		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if opts.onCacheFlush != nil {
+			opts.onCacheFlush(r.URL.Path)
+		}
+		w.WriteHeader(opts.dnsFlushCode)
 	})
 	return httptest.NewServer(mux)
 }

@@ -70,20 +70,7 @@ func TestSecretEnvDoesNotLeakInHelp(t *testing.T) {
 
 func TestSecretEnvDoesNotLeakInImplementedHelp(t *testing.T) {
 	t.Setenv("MIHOMOCTL_SECRET", "test_secret_value")
-	for _, args := range [][]string{
-		{"--help"},
-		{"group", "--help"},
-		{"status", "--help"},
-		{"group", "delay", "--help"},
-		{"connections", "list", "--help"},
-		{"proxy", "set", "--help"},
-		{"mode", "set", "--help"},
-		{"rules", "--help"},
-		{"rules", "list", "--help"},
-		{"providers", "--help"},
-		{"providers", "list", "--help"},
-		{"providers", "healthcheck", "--help"},
-	} {
+	for _, args := range secretHelpSurfaces() {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var out bytes.Buffer
 			if err := run(args, &out); err != nil {
