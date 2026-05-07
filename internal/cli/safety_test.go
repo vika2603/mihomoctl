@@ -135,14 +135,24 @@ func TestConfirmMediumImpactRejectsEmptyMetadata(t *testing.T) {
 	}
 }
 
-func TestDryRunUnsupportedErrorIsUsageCategory(t *testing.T) {
-	err := dryRunUnsupportedError("cache clear dns")
+func TestDryRunUnsupportedErrorIsUsageCategoryAndCarriesActionVerb(t *testing.T) {
+	err := dryRunUnsupportedError("cache clear dns", "flush the cache")
 	assertRenderError(t, err, exitUsage, "")
 	if !strings.Contains(err.Error(), "low-impact mutation") {
 		t.Fatalf("dry-run reject must explain why: %v", err)
 	}
-	if !strings.Contains(err.Error(), "Drop --dry-run") {
-		t.Fatalf("dry-run reject must give actionable next step: %v", err)
+	if !strings.Contains(err.Error(), "Drop --dry-run to flush the cache") {
+		t.Fatalf("dry-run reject must carry the per-command action verb: %v", err)
+	}
+}
+
+func TestDryRunUnsupportedErrorRequiresActionVerb(t *testing.T) {
+	err := dryRunUnsupportedError("cache clear dns", "")
+	if err == nil {
+		t.Fatalf("missing action must fail loud (programmer error)")
+	}
+	if strings.Contains(err.Error(), "Drop --dry-run to proceed") {
+		t.Fatalf("must not silently fall back to generic 'proceed' wording: %v", err)
 	}
 }
 
@@ -177,6 +187,176 @@ func TestPromptRendersSummaryAndProceedQuestion(t *testing.T) {
 	}
 	if !strings.Contains(got, "Proceed? [y/N]:") {
 		t.Fatalf("prompt question missing: %q", got)
+	}
+}
+
+// --- ADR-0014 §4.3 high-tier confirmation contract ---------------------
+
+func TestConfirmHighImpactNonTTYRequiresConfirmToken(t *testing.T) {
+	in := confirmInput{
+		reader:    strings.NewReader(""),
+		promptOut: &bytes.Buffer{},
+		isTTY:     false,
+	}
+	err := confirmHighImpact(in, highConfirmOptions{
+		target:        "config reload",
+		summary:       "Reload upstream config from disk.",
+		expectedToken: "production-config",
+	})
+	if err == nil {
+		t.Fatalf("non-TTY without --confirm must abort")
+	}
+	assertRenderError(t, err, exitUsage, errCodeMutationAborted)
+	if !strings.Contains(err.Error(), `--confirm "production-config"`) {
+		t.Fatalf("error must echo expected token literal: %v", err)
+	}
+}
+
+func TestConfirmHighImpactNonTTYYesAloneIsRejected(t *testing.T) {
+	in := confirmInput{isTTY: false, reader: strings.NewReader(""), promptOut: &bytes.Buffer{}}
+	err := confirmHighImpact(in, highConfirmOptions{
+		target:        "service restart",
+		summary:       "Restart the controller process.",
+		expectedToken: "controller",
+		yes:           true, // --yes alone — must still fail
+	})
+	if err == nil {
+		t.Fatalf("--yes alone must not bypass token in non-TTY")
+	}
+	assertRenderError(t, err, exitUsage, errCodeMutationAborted)
+}
+
+func TestConfirmHighImpactNonTTYTokenMustMatchExactly(t *testing.T) {
+	in := confirmInput{isTTY: false, reader: strings.NewReader(""), promptOut: &bytes.Buffer{}}
+
+	cases := []struct {
+		name    string
+		typed   string
+		wantErr bool
+	}{
+		{"exact", "production-config", false},
+		{"case-mismatch", "Production-Config", true},
+		{"typo", "production_config", true},
+		{"prefix", "production", true},
+		{"suffix-extra", "production-configX", true},
+		{"empty", "", true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			err := confirmHighImpact(in, highConfirmOptions{
+				target:        "config reload",
+				summary:       "Reload.",
+				expectedToken: "production-config",
+				confirmToken:  tc.typed,
+			})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("typed=%q wantErr=%v got err=%v", tc.typed, tc.wantErr, err)
+			}
+			if tc.wantErr {
+				assertRenderError(t, err, exitUsage, errCodeMutationAborted)
+			}
+		})
+	}
+}
+
+func TestConfirmHighImpactTTYPromptAcceptsExactMatch(t *testing.T) {
+	promptOut := &bytes.Buffer{}
+	in := confirmInput{
+		reader:    strings.NewReader("config-prod\n"),
+		promptOut: promptOut,
+		isTTY:     true,
+	}
+	if err := confirmHighImpact(in, highConfirmOptions{
+		target:        "config reload",
+		summary:       "Reload upstream config from disk.",
+		expectedToken: "config-prod",
+	}); err != nil {
+		t.Fatalf("exact retype must succeed: %v", err)
+	}
+	if !strings.Contains(promptOut.String(), "HIGH-impact mutation") {
+		t.Fatalf("prompt must call out high-impact tier: %q", promptOut.String())
+	}
+	if !strings.Contains(promptOut.String(), "retype: config-prod") {
+		t.Fatalf("prompt must show the expected token literal: %q", promptOut.String())
+	}
+}
+
+func TestConfirmHighImpactTTYPromptDeclinesAnythingElse(t *testing.T) {
+	for _, typed := range []string{"", "yes", "y", "config-pro", "Config-Prod", "different"} {
+		typed := typed
+		t.Run("typed="+typed, func(t *testing.T) {
+			in := confirmInput{
+				reader:    strings.NewReader(typed + "\n"),
+				promptOut: &bytes.Buffer{},
+				isTTY:     true,
+			}
+			err := confirmHighImpact(in, highConfirmOptions{
+				target:        "config reload",
+				summary:       "Reload.",
+				expectedToken: "config-prod",
+			})
+			if err == nil {
+				t.Fatalf("typed %q must decline", typed)
+			}
+			assertRenderError(t, err, exitUsage, errCodeMutationAborted)
+		})
+	}
+}
+
+func TestConfirmHighImpactTTYYesWithoutConfirmStillRejects(t *testing.T) {
+	in := confirmInput{
+		reader:    strings.NewReader(""),
+		promptOut: &bytes.Buffer{},
+		isTTY:     true,
+	}
+	err := confirmHighImpact(in, highConfirmOptions{
+		target:        "connections close all",
+		summary:       "Close every active connection.",
+		expectedToken: "all",
+		yes:           true,
+	})
+	if err == nil {
+		t.Fatalf("--yes alone in TTY must still require --confirm token")
+	}
+	assertRenderError(t, err, exitUsage, errCodeMutationAborted)
+	if !strings.Contains(err.Error(), `--yes alone is not enough`) {
+		t.Fatalf("error must explain why --yes alone fails: %v", err)
+	}
+}
+
+func TestConfirmHighImpactRejectsGenericExpectedToken(t *testing.T) {
+	for _, token := range []string{"yes", "y", "YES", "Y"} {
+		token := token
+		t.Run(token, func(t *testing.T) {
+			err := confirmHighImpact(
+				confirmInput{isTTY: true, reader: strings.NewReader("yes\n"), promptOut: &bytes.Buffer{}},
+				highConfirmOptions{target: "x", summary: "y", expectedToken: token},
+			)
+			if err == nil {
+				t.Fatalf("expectedToken %q must be rejected as a programmer error", token)
+			}
+			if strings.Contains(err.Error(), "specific to the resource") == false {
+				t.Fatalf("error must explain why %q is too generic: %v", token, err)
+			}
+		})
+	}
+}
+
+func TestConfirmHighImpactRejectsEmptyMetadata(t *testing.T) {
+	cases := []highConfirmOptions{
+		{target: "", summary: "x", expectedToken: "tok"},
+		{target: "x", summary: "", expectedToken: "tok"},
+		{target: "x", summary: "y", expectedToken: ""},
+	}
+	for _, opts := range cases {
+		opts := opts
+		t.Run("missing", func(t *testing.T) {
+			err := confirmHighImpact(confirmInput{isTTY: true}, opts)
+			if err == nil {
+				t.Fatalf("missing metadata must fail loud (programmer error)")
+			}
+		})
 	}
 }
 

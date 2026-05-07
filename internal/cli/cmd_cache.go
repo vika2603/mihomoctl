@@ -90,7 +90,7 @@ func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) 
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.dryRun {
-				return dryRunUnsupportedError("cache clear " + target)
+				return dryRunUnsupportedError("cache clear "+target, "flush the cache")
 			}
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
 				return runCacheClear(ctx, out, *cfg, client, target)
