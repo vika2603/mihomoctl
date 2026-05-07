@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/term"
 )
 
 const (
@@ -16,13 +17,16 @@ const (
 	clearScreen    = "\x1b[H\x1b[2J"
 )
 
-func HumanTable(headers []string, rows [][]string) string {
+func HumanTable(headers []string, rows [][]string, width int) string {
 	t := table.New().
 		Headers(headers...).
 		Rows(rows...).
 		Border(lipgloss.RoundedBorder()).
 		BorderStyle(lipgloss.NewStyle()).
 		Wrap(false)
+	if width > 0 {
+		t = t.Width(width)
+	}
 	return t.Render()
 }
 
@@ -45,7 +49,12 @@ func SupportsInteractiveTerminal(w io.Writer) bool {
 	return strings.ToLower(os.Getenv("TERM")) != "dumb"
 }
 
-func TerminalWidth() int {
+func TerminalWidth(w io.Writer) int {
+	if f, ok := w.(*os.File); ok {
+		if width, _, err := term.GetSize(f.Fd()); err == nil && width > 0 {
+			return width
+		}
+	}
 	width, err := strconv.Atoi(os.Getenv("COLUMNS"))
 	if err != nil || width <= 0 {
 		return 0

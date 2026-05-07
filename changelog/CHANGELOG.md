@@ -26,8 +26,6 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 - v0.4.1 is **additive + human-cosmetic** under [ADR-0011](../docs/adr/0011-contract-freeze.md): no `--json` contract change, no exit-code change, no envelope schema change. The `--limit` flag addition is additive (default unlimited preserves v0.4 behavior); the `conns` alias is backward-compatible (`connections` long form retained); IEC bytes formatting is human-default-only (`upload_bytes` / `download_bytes` `int64` JSON fields are byte-identical); the `cache clear` bare-error wording change is polish (exit code 64 sustained). No `Breaking` migration is required.
 
-[0.4.1]: https://github.com/vika2603/mihomoctl/compare/v0.4.0...HEAD
-
 ## [0.4.0] - 2026-05-07
 
 ### Added
@@ -73,7 +71,7 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 - The v1.0 contract-lock mechanism is now defined: [ADR-0011](../docs/adr/0011-contract-freeze.md) (canonical `81dda8c5`) introduces a JSON contract manifest and golden contract test, scheduled to land in v0.8. v0.4 ships under the same pre-1.0 two-phase rule as prior releases — the manifest and golden test do **not** retroactively freeze v0.4 shapes.
 - mihomoctl is still pre-1.0. Scripts depending on the v0.4 envelopes (streaming NDJSON, JSON error envelope, `cache clear` shape) should pin to an exact `0.4.x` and read this file before upgrading.
 
-[Unreleased]: https://github.com/vika2603/mihomoctl/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/vika2603/mihomoctl/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/vika2603/mihomoctl/compare/release/v0.3.0...v0.4.0
 
 ## [0.3.0] - 2026-05-07

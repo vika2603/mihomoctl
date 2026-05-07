@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
 )
 
@@ -228,17 +229,36 @@ func TestConnectionsWatchLimitAppliesToJSONAppendAndTUI(t *testing.T) {
 		t.Fatalf("append output missing formatted bytes:\n%s", out.String())
 	}
 
-	tui := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1, filter: "cloudflare"}, event, filterWatchConnections(event.Connections, "cloudflare", 1), 0)
+	tuiResult := buildWatchConnectionsOutput(event.Connections, "cloudflare", 1)
+	tui := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1, filter: "cloudflare"}, event, tuiResult, 0)
 	for _, want := range []string{"mihomoctl connections watch", "matches: 1", "filter: cloudflare", "300 B/400 B"} {
 		if !strings.Contains(tui, want) {
 			t.Fatalf("TUI output missing %q:\n%s", want, tui)
 		}
 	}
 
-	narrow := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, event, filterWatchConnections(event.Connections, "", 1), 59)
+	limitedResult := buildWatchConnectionsOutput(event.Connections, "", 1)
+	limitedTUI := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, event, limitedResult, 80)
+	for _, want := range []string{"matches: 3", "shown: 1"} {
+		if !strings.Contains(limitedTUI, want) {
+			t.Fatalf("limited TUI output missing %q:\n%s", want, limitedTUI)
+		}
+	}
+
+	narrow := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, event, limitedResult, 59)
 	if !strings.Contains(narrow, "id") || strings.Contains(narrow, "started_at") || !strings.Contains(narrow, "c-new") {
 		t.Fatalf("narrow TUI output should use key columns only:\n%s", narrow)
 	}
+
+	long := raw
+	long.Connections[0].Metadata.SourceIP = "192.0.2.123"
+	long.Connections[0].Metadata.DestinationIP = "203.0.113.123"
+	long.Connections[0].Metadata.Host = strings.Repeat("very-long-hostname-", 5) + "example.com"
+	long.Connections[0].Rule = strings.Repeat("DOMAIN-SUFFIX,example.com,", 4)
+	long.Connections[0].Chains = []string{strings.Repeat("VeryLongNodeName", 6)}
+	longEvent := mihomo.WatchEvent{Connections: long.Connections, ReceivedAt: event.ReceivedAt}
+	longTUI := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, longEvent, buildWatchConnectionsOutput(long.Connections, "", 1), 80)
+	assertMaxRenderedWidth(t, longTUI, 80)
 }
 
 func TestConnectionsWatchCanceledContextExitsCleanly(t *testing.T) {
@@ -271,4 +291,13 @@ func decodeTestConnections(t *testing.T) struct {
 		t.Fatalf("unmarshal fixture: %v", err)
 	}
 	return raw
+}
+
+func assertMaxRenderedWidth(t *testing.T, text string, max int) {
+	t.Helper()
+	for _, line := range strings.Split(text, "\n") {
+		if got := lipgloss.Width(line); got > max {
+			t.Fatalf("rendered line width = %d, want <= %d:\n%s\n\nfull output:\n%s", got, max, line, text)
+		}
+	}
 }

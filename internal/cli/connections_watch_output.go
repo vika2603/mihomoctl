@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
 	"github.com/the-super-company/mihomoctl/internal/render"
 	"github.com/the-super-company/mihomoctl/internal/streaming"
@@ -23,7 +24,8 @@ type connectionEventOutput struct {
 }
 
 func writeConnectionWatchEvent(out io.Writer, cfg config, opts connectionsWatchOptions, event mihomo.WatchEvent) error {
-	rows := filterWatchConnections(event.Connections, opts.filter, opts.limit)
+	result := buildWatchConnectionsOutput(event.Connections, opts.filter, opts.limit)
+	rows := result.Connections
 	if cfg.jsonOut {
 		if len(rows) == 0 {
 			return nil
@@ -35,7 +37,7 @@ func writeConnectionWatchEvent(out io.Writer, cfg config, opts connectionsWatchO
 		}})
 	}
 	if opts.tui {
-		return writeConnectionWatchTUI(out, opts, event, rows)
+		return writeConnectionWatchTUI(out, opts, event, result)
 	}
 	if len(rows) == 0 {
 		return streaming.WriteTextLine(out, "no matching active connections")
@@ -60,15 +62,15 @@ func writeConnectionWatchEvent(out io.Writer, cfg config, opts connectionsWatchO
 	return nil
 }
 
-func writeConnectionWatchTUI(out io.Writer, opts connectionsWatchOptions, event mihomo.WatchEvent, rows []connectionOutput) error {
-	text := render.ClearScreen() + renderConnectionWatchTUI(opts, event, rows, render.TerminalWidth())
+func writeConnectionWatchTUI(out io.Writer, opts connectionsWatchOptions, event mihomo.WatchEvent, result connectionsOutput) error {
+	text := render.ClearScreen() + renderConnectionWatchTUI(opts, event, result, render.TerminalWidth(out))
 	if !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
 	return streaming.WriteText(out, text)
 }
 
-func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEvent, rows []connectionOutput, width int) string {
+func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEvent, result connectionsOutput, width int) string {
 	filter := opts.filter
 	if filter == "" {
 		filter = "(no filter)"
@@ -77,12 +79,13 @@ func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEv
 	if opts.limit > 0 {
 		limit = strconv.Itoa(opts.limit)
 	}
+	rows := result.Connections
 	lines := []string{
 		"mihomoctl connections watch",
-		"received_at: " + event.ReceivedAt.UTC().Format(time.RFC3339) +
-			"  matches: " + strconv.Itoa(len(rows)) +
-			"  filter: " + filter +
-			"  limit: " + limit,
+		fitLine("received_at: "+event.ReceivedAt.UTC().Format(time.RFC3339)+
+			"  matches: "+strconv.Itoa(result.Total)+
+			"  shown: "+strconv.Itoa(len(rows)), width),
+		fitLine("filter: "+filter+"  limit: "+limit, width),
 	}
 	if len(rows) == 0 {
 		lines = append(lines, "no matching active connections — watcher is live")
@@ -98,7 +101,7 @@ func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEv
 				render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
 			})
 		}
-		lines = append(lines, render.HumanTable([]string{"id", "source", "destination", "up/down"}, tableRows))
+		lines = append(lines, render.HumanTable([]string{"id", "source", "destination", "up/down"}, tableRows, width))
 		return strings.Join(lines, "\n")
 	}
 	for _, c := range rows {
@@ -112,11 +115,15 @@ func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEv
 			render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
 		})
 	}
-	lines = append(lines, render.HumanTable([]string{"started_at", "source", "destination", "net", "rule", "chains", "up/down"}, tableRows))
+	lines = append(lines, render.HumanTable([]string{"started_at", "source", "destination", "net", "rule", "chains", "up/down"}, tableRows, width))
 	return strings.Join(lines, "\n")
 }
 
 func filterWatchConnections(connections []mihomo.Connection, filter string, limit int) []connectionOutput {
+	return buildWatchConnectionsOutput(connections, filter, limit).Connections
+}
+
+func buildWatchConnectionsOutput(connections []mihomo.Connection, filter string, limit int) connectionsOutput {
 	if limit <= 0 {
 		limit = len(connections)
 		if limit == 0 {
@@ -124,5 +131,17 @@ func filterWatchConnections(connections []mihomo.Connection, filter string, limi
 		}
 	}
 	opts := connectionsListOptions{limit: limit, filter: filter}
-	return buildConnectionsOutput(mihomo.ConnectionsSnapshot{Connections: connections}, opts).Connections
+	return buildConnectionsOutput(mihomo.ConnectionsSnapshot{Connections: connections}, opts)
+}
+
+func fitLine(s string, width int) string {
+	if width <= 0 || lipgloss.Width(s) <= width {
+		return s
+	}
+	const ellipsis = "…"
+	runes := []rune(s)
+	for len(runes) > 0 && lipgloss.Width(string(runes)+ellipsis) > width {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + ellipsis
 }

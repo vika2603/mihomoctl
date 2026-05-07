@@ -1120,16 +1120,17 @@ The watcher behaves differently on a TTY versus non-TTY/pipe; both share the sam
 When stdout is an interactive terminal (`os.File.Stat().Mode() & os.ModeCharDevice` is set, and `TERM` is not `dumb`), the watcher renders an in-place table that redraws on each upstream snapshot, similar to `top` / `htop`:
 
 - **Alternate-screen** is entered on start and restored on exit, so the operator's scrollback is preserved.
-- A **fixed header** at the top shows: `received_at` (UTC) of the most recent snapshot, total match count after filter, active `--filter` value (or `(no filter)`), and the active `--limit` value.
+- A **fixed header** at the top shows: `received_at` (UTC) of the most recent snapshot, total match count after filter, shown row count after `--limit`, active `--filter` value (or `(no filter)`), and the active `--limit` value.
 - The body is a **table** with the same columns as `connections list` (`started_at`, `source`, `destination`, `network`, `rule`, `chains`, `up/down`), sorted `started_at` descending. The `up/down` column uses IEC binary units (`B` / `KiB` / `MiB` / `GiB`) — see [`connections list` Output](#mihomoctl-connections-list).
 - **Empty snapshot** (no connections after filter) shows `(no matching active connections — watcher is live)` in the body to confirm the stream is healthy.
 - **Ctrl-C** restores the alternate-screen and exits `0`.
 - **Sober styling**: single color, no gradient or alarm color, light table border, bold for emphasis (e.g. match count). The `NO_COLOR` env var disables all color rendering.
-- **Terminal width fallback**: if the terminal is narrower than ~60 columns, the table falls back to the key columns (`id` / `source` / `destination` / `up` / `down`) and wider fields are truncated with an ellipsis.
+- **Terminal width fallback**: if the terminal is narrower than ~60 columns, the table falls back to the key columns (`id` / `source` / `destination` / `up` / `down`) and wider fields are truncated to fit.
 
 ```
 mihomoctl connections watch
-received_at: 2026-05-07T03:23:16Z  matches: 1  filter: (no filter)  limit: 1
+received_at: 2026-05-07T03:23:16Z  matches: 12  shown: 1
+filter: (no filter)  limit: 1
 ╭────────────────────┬──────────────────┬─────────────────┬───┬──────────────────────────────┬─────────────┬─────────────╮
 │started_at          │source            │destination      │net│rule                          │chains       │up/down      │
 ├────────────────────┼──────────────────┼─────────────────┼───┼──────────────────────────────┼─────────────┼─────────────┤

@@ -23,7 +23,7 @@ func TestFormatBytesIEC(t *testing.T) {
 }
 
 func TestHumanTableUsesHeadersAndRows(t *testing.T) {
-	got := HumanTable([]string{"name", "up/down"}, [][]string{{"c1", "1.0 KiB/2.0 KiB"}})
+	got := HumanTable([]string{"name", "up/down"}, [][]string{{"c1", "1.0 KiB/2.0 KiB"}}, 0)
 	for _, want := range []string{"name", "up/down", "c1", "1.0 KiB/2.0 KiB"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("table missing %q:\n%s", want, got)
