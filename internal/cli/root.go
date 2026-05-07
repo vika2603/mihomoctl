@@ -1,0 +1,144 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/the-super-company/mihomoctl/internal/mihomo"
+)
+
+const (
+	defaultEndpoint = "http://127.0.0.1:9090"
+	defaultTimeout  = 5 * time.Second
+)
+
+const (
+	exitOK       = 0
+	exitUsage    = 64
+	exitNotFound = 66
+	exitSoftware = 70
+	exitSystem   = 71
+	exitCantOut  = 73
+	exitTempFail = 75
+	exitNoPerm   = 77
+)
+
+type config struct {
+	endpoint        string
+	secret          string
+	jsonOut         bool
+	timeout         time.Duration
+	timeoutExplicit bool
+}
+
+func Run(args []string, out, errOut io.Writer) int {
+	if err := run(args, out); err != nil {
+		var ce *cliError
+		if errors.As(err, &ce) {
+			fmt.Fprintln(errOut, ce.msg)
+			return ce.code
+		}
+		fmt.Fprintf(errOut, "unexpected error: %v\n", err)
+		return exitSoftware
+	}
+	return exitOK
+}
+
+func run(args []string, out io.Writer) error {
+	cmd := newRootCommand(out)
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		return normalizeCobraErr(err)
+	}
+	return nil
+}
+
+func newRootCommand(out io.Writer) *cobra.Command {
+	cfg := config{
+		endpoint: getenvDefault("MIHOMOCTL_ENDPOINT", defaultEndpoint),
+		timeout:  defaultTimeout,
+	}
+	root := &cobra.Command{
+		Use:                "mihomoctl [--endpoint URL] [--secret VALUE|-s VALUE] [--json] [--timeout DURATION] <command>",
+		Short:              "Control a local mihomo external-controller",
+		SilenceUsage:       true,
+		SilenceErrors:      true,
+		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+		DisableSuggestions: true,
+	}
+	root.SetOut(out)
+	root.SetErr(io.Discard)
+	root.PersistentFlags().StringVar(&cfg.endpoint, "endpoint", cfg.endpoint, "mihomo external-controller endpoint")
+	root.PersistentFlags().StringVarP(&cfg.secret, "secret", "s", "", "mihomo secret; prefer MIHOMOCTL_SECRET to avoid shell history/process-list leaks")
+	root.PersistentFlags().BoolVar(&cfg.jsonOut, "json", false, "emit JSON output")
+	root.PersistentFlags().DurationVar(&cfg.timeout, "timeout", cfg.timeout, "request timeout")
+	root.AddCommand(newStatusCommand(out, &cfg), newProxyCommand(out, &cfg), newModeCommand(out, &cfg), newGroupCommand(out, &cfg), newConnectionsCommand(out, &cfg), newRulesCommand(out, &cfg), newProvidersCommand(out, &cfg), newManCommand())
+	return root
+}
+
+func newClient(cfg config) (*mihomo.Client, error) {
+	client, err := mihomo.New(cfg.endpoint, cfg.secret, cfg.timeout)
+	if err != nil {
+		return nil, usage("%v", err)
+	}
+	return client, nil
+}
+
+func normalizeCobraErr(err error) error {
+	var ce *cliError
+	if errors.As(err, &ce) {
+		return err
+	}
+	return usage("%v", err)
+}
+
+func getenvDefault(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func runWithClient(cmd *cobra.Command, cfg *config, fn func(context.Context, *mihomo.Client) error) error {
+	resolved := *cfg
+	flags := cmd.Root().PersistentFlags()
+	resolved.timeoutExplicit = flags.Changed("timeout")
+	if !flags.Changed("secret") {
+		resolved.secret = os.Getenv("MIHOMOCTL_SECRET")
+	}
+	client, err := newClient(resolved)
+	if err != nil {
+		return err
+	}
+	return fn(cmd.Context(), client)
+}
+
+func commandHelp(cmd *cobra.Command, args []string) error {
+	if len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
+		return cmd.Help()
+	}
+	return nil
+}
+
+func oneOfMode(mode string) bool {
+	return mode == "rule" || mode == "global" || mode == "direct"
+}
+
+func hasHelpArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "help" || arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+func unknownCommandError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "unknown command")
+}
