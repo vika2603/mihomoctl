@@ -124,8 +124,19 @@ func TestProxyListAndSet(t *testing.T) {
 	if err := run([]string{"--endpoint", srv.URL, "proxy", "list"}, &out); err != nil {
 		t.Fatalf("proxy list failed: %v", err)
 	}
+	if !strings.HasPrefix(out.String(), "name\ttype\tselected\tcandidates\n") {
+		t.Fatalf("proxy list default should render summary table:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "* A") || strings.Contains(out.String(), "  B") {
+		t.Fatalf("proxy list default should not render candidate nodes:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := run([]string{"--endpoint", srv.URL, "proxy", "list", "--verbose"}, &out); err != nil {
+		t.Fatalf("proxy list --verbose failed: %v", err)
+	}
 	if !strings.Contains(out.String(), "Proxy -> A") || !strings.Contains(out.String(), "* A") {
-		t.Fatalf("unexpected proxy list:\n%s", out.String())
+		t.Fatalf("unexpected proxy list --verbose:\n%s", out.String())
 	}
 
 	out.Reset()
