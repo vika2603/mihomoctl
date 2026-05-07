@@ -16,10 +16,46 @@ func TestStatus(t *testing.T) {
 		t.Fatalf("status failed: %v", err)
 	}
 	got := out.String()
-	for _, want := range []string{"mode: rule", "version: v-test", "Proxy: A"} {
+	for _, want := range []string{"mode: rule", "version: v-test", "groups: 2 selectable"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("status output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestStatusDefaultSummary(t *testing.T) {
+	srv := fakeMihomo(t, "")
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "status"}, &out); err != nil {
+		t.Fatalf("status failed: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"mode: rule", "version: v-test", "groups: 2 selectable (use --verbose to list)"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("status output missing %q:\n%s", want, got)
+		}
+	}
+	for _, unexpected := range []string{"Proxy: A", "Auto / 香港: A"} {
+		if strings.Contains(got, unexpected) {
+			t.Fatalf("status default summary should not list group %q:\n%s", unexpected, got)
+		}
+	}
+}
+
+func TestStatusVerboseListsGroups(t *testing.T) {
+	srv := fakeMihomo(t, "")
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "status", "--verbose"}, &out); err != nil {
+		t.Fatalf("status --verbose failed: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"mode: rule", "version: v-test", "groups:", "Proxy: A", "Auto / 香港: A"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("status --verbose output missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "(use --verbose to list)") {
+		t.Fatalf("status --verbose should not print summary hint:\n%s", got)
 	}
 }
 

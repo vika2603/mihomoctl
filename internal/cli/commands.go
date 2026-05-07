@@ -11,9 +11,11 @@ import (
 )
 
 func newStatusCommand(out io.Writer, cfg *config) *cobra.Command {
+	var opts statusOptions
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show mode, mihomo version, and current selection for each selectable group",
+		Short: "Show current controller status",
+		Long:  "Show current mihomo mode, controller version, and a compact selectable-group summary.\n\nUse --verbose to list every selectable group and its selected node.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
@@ -25,11 +27,16 @@ func newStatusCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return cmdStatus(ctx, out, *cfg, client, args)
+				return cmdStatus(ctx, out, *cfg, client, args, opts)
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "list every selectable group and its selected node")
 	return cmd
+}
+
+type statusOptions struct {
+	verbose bool
 }
 
 func newProxyCommand(out io.Writer, cfg *config) *cobra.Command {
@@ -147,7 +154,7 @@ func newModeSetCommand(out io.Writer, cfg *config) *cobra.Command {
 	return cmd
 }
 
-func cmdStatus(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, args []string) error {
+func cmdStatus(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, args []string, opts statusOptions) error {
 	if len(args) != 0 {
 		return usage("status takes no arguments")
 	}
@@ -175,9 +182,13 @@ func cmdStatus(ctx context.Context, out io.Writer, cfg config, client *mihomo.Cl
 
 	fmt.Fprintf(out, "mode: %s\n", conf.Mode)
 	fmt.Fprintf(out, "version: %s\n", version.Version)
+	if !opts.verbose {
+		fmt.Fprintf(out, "groups: %d selectable (use --verbose to list)\n", len(groups))
+		return nil
+	}
 	fmt.Fprintln(out, "groups:")
 	for _, g := range groups {
-		fmt.Fprintf(out, "  %s: %s\n", g.Name, g.Selected)
+		fmt.Fprintf(out, "  %s: %s\n", g.Name, emptyDash(g.Selected))
 	}
 	return nil
 }
