@@ -70,6 +70,28 @@ type providerActionOptions struct {
 	dryRun bool
 }
 
+var proxyProvidersListColumns = render.TableSpec{
+	Columns: []render.Column{
+		{Name: "name"},
+		{Name: "type"},
+		{Name: "vehicle_type"},
+		{Name: "health"},
+		{Name: "node_count"},
+		{Name: "updated_at"},
+	},
+}
+
+var ruleProvidersListColumns = render.TableSpec{
+	Columns: []render.Column{
+		{Name: "name"},
+		{Name: "type"},
+		{Name: "vehicle_type"},
+		{Name: "behavior"},
+		{Name: "rule_count"},
+		{Name: "updated_at"},
+	},
+}
+
 func newProxyProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "proxy-providers",
@@ -107,10 +129,11 @@ func newRuleProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 }
 
 func newProxyProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
+	var columnsFlag string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List proxy provider snapshots",
-		Long:  "List proxy provider snapshots.\n\nInventory: GET /providers/proxies.\nThis is a read-only command.",
+		Long:  "List proxy provider snapshots.\n\nInventory: GET /providers/proxies.\nThis is a read-only command.\n\nAvailable --columns: " + proxyProvidersListColumns.AvailableNames() + ".",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("proxy-providers list takes no arguments")
@@ -119,10 +142,11 @@ func newProxyProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runProvidersList(ctx, out, *cfg, client)
+				return runProvidersList(ctx, out, *cfg, client, columnsFlag)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&columnsFlag, "columns", "", "comma-separated columns for human output (default = all). Available: "+proxyProvidersListColumns.AvailableNames())
 	return cmd
 }
 
@@ -196,10 +220,11 @@ func newProxyProvidersHealthcheckCommand(out io.Writer, cfg *config) *cobra.Comm
 }
 
 func newRuleProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
+	var columnsFlag string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List rule provider snapshots",
-		Long:  "List rule provider snapshots.\n\nInventory: GET /providers/rules.\nThis is a read-only command.",
+		Long:  "List rule provider snapshots.\n\nInventory: GET /providers/rules.\nThis is a read-only command.\n\nAvailable --columns: " + ruleProvidersListColumns.AvailableNames() + ".",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("rule-providers list takes no arguments")
@@ -208,14 +233,15 @@ func newRuleProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runRuleProvidersList(ctx, out, *cfg, client)
+				return runRuleProvidersList(ctx, out, *cfg, client, columnsFlag)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&columnsFlag, "columns", "", "comma-separated columns for human output (default = all). Available: "+ruleProvidersListColumns.AvailableNames())
 	return cmd
 }
 
-func runProvidersList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client) error {
+func runProvidersList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, columnsFlag string) error {
 	providers, err := client.ListProxyProviders(ctx)
 	if err != nil {
 		return mapErr(err)
@@ -224,15 +250,31 @@ func runProvidersList(ctx context.Context, out io.Writer, cfg config, client *mi
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
+	cols, err := proxyProvidersListColumns.Select(render.ParseColumns(columnsFlag))
+	if err != nil {
+		return usage("%s", err)
+	}
 	if len(result.Providers) == 0 {
 		fmt.Fprintln(out, "no proxy providers")
 		return nil
 	}
-	fmt.Fprintln(out, "name\ttype\tvehicle_type\thealth\tnode_count\tupdated_at")
-	for _, p := range result.Providers {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%d\t%s\n", p.Name, p.Type, p.VehicleType, p.Health, p.NodeCount, p.UpdatedAt)
+	rows := make([][]string, len(result.Providers))
+	for i, p := range result.Providers {
+		values := map[string]string{
+			"name":         p.Name,
+			"type":         p.Type,
+			"vehicle_type": p.VehicleType,
+			"health":       p.Health,
+			"node_count":   fmt.Sprintf("%d", p.NodeCount),
+			"updated_at":   emptyDash(p.UpdatedAt),
+		}
+		row := make([]string, len(cols))
+		for j, c := range cols {
+			row[j] = values[c.Name]
+		}
+		rows[i] = row
 	}
-	return nil
+	return render.WriteTable(out, cols, rows)
 }
 
 func runProxyProvidersGet(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string) error {
@@ -290,7 +332,7 @@ func runProxyProvidersUpdate(ctx context.Context, out io.Writer, cfg config, cli
 	return nil
 }
 
-func runRuleProvidersList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client) error {
+func runRuleProvidersList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, columnsFlag string) error {
 	providers, err := client.ListRuleProviders(ctx)
 	if err != nil {
 		return mapErr(err)
@@ -299,15 +341,31 @@ func runRuleProvidersList(ctx context.Context, out io.Writer, cfg config, client
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
+	cols, err := ruleProvidersListColumns.Select(render.ParseColumns(columnsFlag))
+	if err != nil {
+		return usage("%s", err)
+	}
 	if len(result.Providers) == 0 {
 		fmt.Fprintln(out, "no rule providers")
 		return nil
 	}
-	fmt.Fprintln(out, "name\ttype\tvehicle_type\tbehavior\trule_count\tupdated_at")
-	for _, p := range result.Providers {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%d\t%s\n", p.Name, p.Type, p.VehicleType, p.Behavior, p.RuleCount, p.UpdatedAt)
+	rows := make([][]string, len(result.Providers))
+	for i, p := range result.Providers {
+		values := map[string]string{
+			"name":         p.Name,
+			"type":         p.Type,
+			"vehicle_type": p.VehicleType,
+			"behavior":     p.Behavior,
+			"rule_count":   fmt.Sprintf("%d", p.RuleCount),
+			"updated_at":   emptyDash(p.UpdatedAt),
+		}
+		row := make([]string, len(cols))
+		for j, c := range cols {
+			row[j] = values[c.Name]
+		}
+		rows[i] = row
 	}
-	return nil
+	return render.WriteTable(out, cols, rows)
 }
 
 func runProxyProvidersHealthcheck(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string, now func() time.Time) error {
