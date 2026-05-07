@@ -236,6 +236,31 @@ func TestConnectionsWatchLimitAppliesToJSONAppendAndTUI(t *testing.T) {
 		t.Fatalf("append output missing formatted bytes:\n%s", out.String())
 	}
 
+	var emptyRaw struct {
+		Connections []mihomo.Connection `json:"connections"`
+	}
+	emptyBytes, err := json.Marshal(map[string]any{"connections": []map[string]any{
+		testConnection("c-empty", "2026-05-07T04:00:00Z", "tcp", "", "", "", "", "", "", nil, 0, 0),
+	}})
+	if err != nil {
+		t.Fatalf("marshal empty connection fixture: %v", err)
+	}
+	if err := json.Unmarshal(emptyBytes, &emptyRaw); err != nil {
+		t.Fatalf("unmarshal empty connection fixture: %v", err)
+	}
+	empty := mihomo.WatchEvent{Connections: emptyRaw.Connections, ReceivedAt: event.ReceivedAt}
+	out.Reset()
+	if err := writeConnectionWatchEvent(&out, config{}, connectionsWatchOptions{limit: 1}, empty); err != nil {
+		t.Fatalf("write append event with empty fields: %v", err)
+	}
+	if !strings.Contains(out.String(), "-\t-\ttcp\t-\t-\t0 B/0 B") {
+		t.Fatalf("append watch output should dash empty fields:\n%s", out.String())
+	}
+	emptyTUI := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, empty, buildWatchConnectionsOutput(empty.Connections, "", 1), 80)
+	if !strings.Contains(emptyTUI, "│2026-05-07T04:00:00Z│-        │-          │tcp") {
+		t.Fatalf("TUI watch output should dash empty fields:\n%s", emptyTUI)
+	}
+
 	tuiResult := buildWatchConnectionsOutput(event.Connections, "cloudflare", 1)
 	tui := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1, filter: "cloudflare"}, event, tuiResult, 0)
 	for _, want := range []string{"mihomoctl connections watch", "matches: 1", "filter: cloudflare", "300 B/400 B"} {

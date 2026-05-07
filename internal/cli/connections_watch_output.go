@@ -44,16 +44,21 @@ func writeConnectionWatchEvent(out io.Writer, cfg config, opts connectionsWatchO
 	if err := streaming.WriteTextLine(out, "received_at\tstarted_at\tsource\tdestination\tnetwork\trule\tchains\tup/down"); err != nil {
 		return err
 	}
+	cols, err := connectionsListColumns.Select([]string{"started_at", "source", "destination", "network", "rule", "chains", "up_down"})
+	if err != nil {
+		return err
+	}
 	for _, c := range rows {
+		row := connectionRow(c, cols)
 		if err := streaming.WriteTextLine(out, strings.Join([]string{
 			event.ReceivedAt.UTC().Format(time.RFC3339),
-			c.StartedAt,
-			c.Source,
-			c.Destination,
-			c.Network,
-			c.Rule,
-			strings.Join(c.Chains, " > "),
-			render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
+			row[0],
+			row[1],
+			row[2],
+			row[3],
+			row[4],
+			row[5],
+			row[6],
 		}, "\t")); err != nil {
 			return err
 		}
@@ -93,25 +98,27 @@ func renderConnectionWatchTUI(opts connectionsWatchOptions, event mihomo.WatchEv
 	tableRows := make([][]string, 0, len(rows))
 	if width > 0 && width < 60 {
 		for _, c := range rows {
+			row := connectionRow(c, []render.Column{{Name: "id"}, {Name: "source"}, {Name: "destination"}, {Name: "up_down"}})
 			tableRows = append(tableRows, []string{
-				c.ID,
-				c.Source,
-				c.Destination,
-				render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
+				row[0],
+				row[1],
+				row[2],
+				row[3],
 			})
 		}
 		lines = append(lines, render.HumanTable([]string{"id", "source", "destination", "up/down"}, tableRows, width))
 		return strings.Join(lines, "\n")
 	}
 	for _, c := range rows {
+		row := connectionRow(c, []render.Column{{Name: "started_at"}, {Name: "source"}, {Name: "destination"}, {Name: "network"}, {Name: "rule"}, {Name: "chains"}, {Name: "up_down"}})
 		tableRows = append(tableRows, []string{
-			c.StartedAt,
-			c.Source,
-			c.Destination,
-			c.Network,
-			c.Rule,
-			strings.Join(c.Chains, " > "),
-			render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
+			row[0],
+			row[1],
+			row[2],
+			row[3],
+			row[4],
+			row[5],
+			row[6],
 		})
 	}
 	lines = append(lines, render.HumanTable([]string{"started_at", "source", "destination", "net", "rule", "chains", "up/down"}, tableRows, width))

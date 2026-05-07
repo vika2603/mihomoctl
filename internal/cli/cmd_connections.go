@@ -136,6 +136,7 @@ func connectionRow(c connectionOutput, cols []render.Column) []string {
 		"network":     emptyDash(c.Network),
 		"rule":        emptyDash(c.Rule),
 		"chains":      emptyDash(strings.Join(c.Chains, " > ")),
+		"id":          emptyDash(c.ID),
 		"upload":      render.FormatBytes(c.UploadBytes),
 		"download":    render.FormatBytes(c.DownloadBytes),
 		"up_down":     render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),
