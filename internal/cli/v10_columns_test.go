@@ -93,6 +93,29 @@ func TestProxyProvidersListColumnsSelection(t *testing.T) {
 	}
 }
 
+func TestProxyProvidersListEmptyUpdatedAtUsesDashPlaceholder(t *testing.T) {
+	srv := fakeMihomoWith(t, fakeOptions{providers: map[string]any{
+		"missing-time": map[string]any{
+			"name":        "missing-time",
+			"type":        "Proxy",
+			"vehicleType": "File",
+			"proxies":     []map[string]any{},
+		},
+	}})
+
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "proxy-providers", "list", "--columns", "name,updated_at"}, &out); err != nil {
+		t.Fatalf("proxy-providers list empty updated_at failed: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, "name\tupdated_at") {
+		t.Fatalf("header missing expected columns:\n%s", out.String())
+	}
+	if !strings.Contains(got, "missing-time\t-") {
+		t.Fatalf("empty updated_at should render as dash placeholder:\n%s", out.String())
+	}
+}
+
 // TestRuleProvidersListColumnsSelection sanity check.
 func TestRuleProvidersListColumnsSelection(t *testing.T) {
 	srv := fakeMihomo(t, "")
