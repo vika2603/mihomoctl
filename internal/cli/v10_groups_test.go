@@ -88,7 +88,7 @@ func TestGroupsCommandUsageErrors(t *testing.T) {
 		want string
 	}{
 		{name: "bare groups", args: []string{"groups"}, want: "groups requires list, get, or delay"},
-		{name: "old group removed", args: []string{"group", "delay", "Proxy"}, want: `unknown command "group"`},
+		{name: "old group removed", args: []string{"group", "delay", "Proxy"}, want: `use "mihomoctl groups delay <name>"`},
 		{name: "unknown", args: []string{"groups", "bad"}, want: `unknown groups subcommand "bad"`},
 		{name: "list args", args: []string{"groups", "list", "extra"}, want: "groups list takes no arguments"},
 		{name: "get args", args: []string{"groups", "get"}, want: "groups get requires <name>"},

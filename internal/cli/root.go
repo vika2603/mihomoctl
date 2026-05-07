@@ -103,6 +103,9 @@ func normalizeCobraErr(err error) error {
 	if errors.As(err, &ce) {
 		return err
 	}
+	if strings.Contains(err.Error(), `unknown command "group"`) {
+		return usage("%v. The v1.0 command namespace is \"groups\"; use \"mihomoctl groups delay <name>\".", err)
+	}
 	return usage("%v", err)
 }
 
