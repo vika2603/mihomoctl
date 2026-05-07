@@ -90,7 +90,7 @@ func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) 
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.dryRun {
-				return usage("cache clear %s does not support --dry-run; it is a low-impact mutation that runs immediately. Drop --dry-run to flush the cache.", target)
+				return dryRunUnsupportedError("cache clear " + target)
 			}
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
 				return runCacheClear(ctx, out, *cfg, client, target)
@@ -140,7 +140,7 @@ func runCacheClear(ctx context.Context, out io.Writer, cfg config, client *mihom
 		}
 		return mapErr(err)
 	}
-	result.Risk = lowRiskCacheClear(target)
+	result.Risk = lowRisk(cacheClearRiskSummary(target))
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
@@ -148,10 +148,9 @@ func runCacheClear(ctx context.Context, out io.Writer, cfg config, client *mihom
 	return nil
 }
 
-func lowRiskCacheClear(target string) *riskInfo {
-	summary := "Flushes the runtime cache only; configuration and active connections are not changed."
+func cacheClearRiskSummary(target string) string {
 	if target == "all" {
-		summary = "Flushes fakeip then DNS runtime caches only; configuration and active connections are not changed."
+		return "Flushes fakeip then DNS runtime caches only; configuration and active connections are not changed."
 	}
-	return &riskInfo{Level: "low", Summary: summary}
+	return "Flushes the runtime cache only; configuration and active connections are not changed."
 }
