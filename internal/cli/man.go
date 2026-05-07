@@ -28,12 +28,12 @@ func newManCommand() *cobra.Command {
 
 func generateManPages(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return &cliError{code: exitCantOut, msg: fmt.Sprintf("cannot create man page directory: %v", err)}
+		return &cliError{Code: exitCantOut, Message: fmt.Sprintf("cannot create man page directory: %v", err)}
 	}
 	root := newRootCommand(os.Stdout)
 	root.DisableAutoGenTag = true
 	if err := doc.GenManTree(root, &doc.GenManHeader{Title: "MIHOMOCTL", Section: "1"}, dir); err != nil {
-		return &cliError{code: exitCantOut, msg: fmt.Sprintf("cannot generate man pages: %v", err)}
+		return &cliError{Code: exitCantOut, Message: fmt.Sprintf("cannot generate man pages: %v", err)}
 	}
 	return nil
 }

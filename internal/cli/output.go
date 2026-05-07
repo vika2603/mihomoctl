@@ -1,22 +1,10 @@
 package cli
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"sort"
 
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
 )
-
-func writeJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		return &cliError{code: exitCantOut, msg: fmt.Sprintf("cannot write JSON output: %v", err)}
-	}
-	return nil
-}
 
 type groupOutput struct {
 	Name       string   `json:"name"`

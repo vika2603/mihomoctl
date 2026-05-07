@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 const defaultDelayURL = "http://www.gstatic.com/generate_204"
@@ -102,7 +103,7 @@ func runGroupDelay(ctx context.Context, out io.Writer, cfg config, client *mihom
 
 	result := buildDelayOutput(group, proxy, opts, delays)
 	if cfg.jsonOut {
-		return writeJSON(out, result)
+		return render.WriteJSON(out, result)
 	}
 	fmt.Fprintf(out, "%s (%s) selected: %s\n", result.Group, result.Type, result.Selected)
 	fmt.Fprintln(out, "node\tlatency_ms\tstatus")

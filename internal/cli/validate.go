@@ -18,26 +18,26 @@ func validateSelection(proxies map[string]mihomo.Proxy, group, node string) (str
 			}
 		}
 		sort.Strings(available)
-		return "", &cliError{code: exitNotFound, msg: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(available, ", "))}
+		return "", &cliError{Code: exitNotFound, Message: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(available, ", "))}
 	}
 	for _, candidate := range p.All {
 		if candidate == node {
 			return p.Now, nil
 		}
 	}
-	return "", &cliError{code: exitNotFound, msg: fmt.Sprintf("node %q not found in group %q, available: %s", node, group, strings.Join(p.All, ", "))}
+	return "", &cliError{Code: exitNotFound, Message: fmt.Sprintf("node %q not found in group %q, available: %s", node, group, strings.Join(p.All, ", "))}
 }
 
 func validateDelayGroup(proxies map[string]mihomo.Proxy, group string) (mihomo.Proxy, error) {
 	p, ok := proxies[group]
 	if !ok {
-		return mihomo.Proxy{}, &cliError{code: exitNotFound, msg: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(delayGroupNames(proxies), ", "))}
+		return mihomo.Proxy{}, &cliError{Code: exitNotFound, Message: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(delayGroupNames(proxies), ", "))}
 	}
 	if !delaySupportedType(p.Type) {
 		return mihomo.Proxy{}, usage("group %q type %q does not support delay test, applicable types: URLTest, Selector, Fallback, LoadBalance", group, p.Type)
 	}
 	if len(p.All) == 0 {
-		return mihomo.Proxy{}, &cliError{code: exitNotFound, msg: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(delayGroupNames(proxies), ", "))}
+		return mihomo.Proxy{}, &cliError{Code: exitNotFound, Message: fmt.Sprintf("group %q not found, available: %s", group, strings.Join(delayGroupNames(proxies), ", "))}
 	}
 	return p, nil
 }

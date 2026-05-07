@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 type providersOutput struct {
@@ -100,7 +101,7 @@ func runProvidersList(ctx context.Context, out io.Writer, cfg config, client *mi
 	}
 	result := buildProvidersOutput(providers)
 	if cfg.jsonOut {
-		return writeJSON(out, result)
+		return render.WriteJSON(out, result)
 	}
 	if len(result.Providers) == 0 {
 		fmt.Fprintln(out, "no proxy providers")
@@ -135,7 +136,7 @@ func runProvidersHealthcheck(ctx context.Context, out io.Writer, cfg config, cli
 	}
 	result := buildProviderHealthcheckOutput(name, provider, triggeredAt)
 	if cfg.jsonOut {
-		return writeJSON(out, result)
+		return render.WriteJSON(out, result)
 	}
 	fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 		result.Provider, result.Type, result.VehicleType, result.Health, result.NodeCount, result.UpdatedAt, result.TriggeredAt)
@@ -189,7 +190,7 @@ func validateProxyProvider(providers map[string]mihomo.ProxyProvider, name strin
 		available = append(available, name)
 	}
 	sort.Strings(available)
-	return mihomo.ProxyProvider{}, &cliError{code: exitNotFound, msg: fmt.Sprintf("proxy provider %q not found, available: %s", name, strings.Join(available, ", "))}
+	return mihomo.ProxyProvider{}, &cliError{Code: exitNotFound, Message: fmt.Sprintf("proxy provider %q not found, available: %s", name, strings.Join(available, ", "))}
 }
 
 func providerHealth(p mihomo.ProxyProvider) string {

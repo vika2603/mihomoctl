@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/the-super-company/mihomoctl/internal/mihomo"
+	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
 type connectionsListOptions struct {
@@ -89,7 +90,7 @@ func runConnectionsList(ctx context.Context, out io.Writer, cfg config, client *
 	}
 	result := buildConnectionsOutput(snapshot, opts)
 	if cfg.jsonOut {
-		return writeJSON(out, result)
+		return render.WriteJSON(out, result)
 	}
 	if len(result.Connections) == 0 {
 		fmt.Fprintln(out, "no active connections")
