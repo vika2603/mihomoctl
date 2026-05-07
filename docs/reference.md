@@ -1466,7 +1466,7 @@ The seven categories (per [ADR-0010](./adr/0010-error-envelope-schema.md) v0.2 c
 | `tempfail` | 75 | Controller unreachable, mid-flight network failure, streaming initial-connect timeout, or streaming reconnect cap exhausted. | `controller_unavailable`, `controller_timeout`, `controller_http_error` |
 | `noperm` | 77 | Authorization failed at the controller — secret missing or wrong. Includes WebSocket handshake auth failure for `connections watch`. | `auth_failed` |
 
-v0.5 adds an eighth category, `mutation_aborted`, for the `config reload` / `service restart` family under ADR-0008 — not present in v0.4 envelopes.
+v0.5 adds the `mutation_aborted` code under category `usage` (exit 64) for the `config reload` / `service restart` family — not present in v0.4 envelopes. The category enum remains the seven listed above; new categories require an ADR-0010 amendment.
 
 ### Code naming convention
 
