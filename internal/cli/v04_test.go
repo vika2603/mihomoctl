@@ -257,8 +257,15 @@ func TestConnectionsWatchLimitAppliesToJSONAppendAndTUI(t *testing.T) {
 		t.Fatalf("append watch output should dash empty fields:\n%s", out.String())
 	}
 	emptyTUI := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, empty, buildWatchConnectionsOutput(empty.Connections, "", 1), 80)
-	if !strings.Contains(emptyTUI, "│2026-05-07T04:00:00Z│-        │-          │tcp") {
-		t.Fatalf("TUI watch output should dash empty fields:\n%s", emptyTUI)
+	// Per CEO directive msg=c414c475 ("表格不需要边框，去掉"): the TUI table must not
+	// contain any vertical / horizontal box-drawing border characters.
+	for _, ch := range []string{"│", "─", "┌", "┐", "└", "┘", "├", "┤", "┬", "┴", "┼"} {
+		if strings.Contains(emptyTUI, ch) {
+			t.Fatalf("TUI watch output should have no border characters (saw %q):\n%s", ch, emptyTUI)
+		}
+	}
+	if !strings.Contains(emptyTUI, "2026-05-07T04:00:00Z-         -          tcp") {
+		t.Fatalf("TUI watch output should dash empty fields without borders:\n%s", emptyTUI)
 	}
 
 	tuiResult := buildWatchConnectionsOutput(event.Connections, "cloudflare", 1)
