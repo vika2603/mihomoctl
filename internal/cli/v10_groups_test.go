@@ -87,7 +87,8 @@ func TestGroupsCommandUsageErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "bare groups", args: []string{"groups"}, want: "groups requires list or get"},
+		{name: "bare groups", args: []string{"groups"}, want: "groups requires list, get, or delay"},
+		{name: "old group removed", args: []string{"group", "delay", "Proxy"}, want: `unknown command "group"`},
 		{name: "unknown", args: []string{"groups", "bad"}, want: `unknown groups subcommand "bad"`},
 		{name: "list args", args: []string{"groups", "list", "extra"}, want: "groups list takes no arguments"},
 		{name: "get args", args: []string{"groups", "get"}, want: "groups get requires <name>"},
