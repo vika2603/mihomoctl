@@ -10,12 +10,15 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 type ErrorKind int
 
 const (
 	ErrAuth ErrorKind = iota + 1
+	ErrBadRequest
 	ErrNotFound
 	ErrUnavailable
 	ErrSoftware
@@ -134,6 +137,103 @@ func (c *Client) HealthcheckProxyProvider(ctx context.Context, name string) erro
 	return c.do(ctx, http.MethodGet, path, nil, nil)
 }
 
+func (c *Client) QueryDNS(ctx context.Context, domain, queryType string) (DNSResponse, error) {
+	values := url.Values{}
+	values.Set("name", domain)
+	if queryType != "" {
+		values.Set("type", queryType)
+	}
+	var v DNSResponse
+	err := c.do(ctx, http.MethodGet, "/dns/query?"+values.Encode(), nil, &v)
+	return v, err
+}
+
+func (c *Client) FlushFakeIPCache(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/cache/fakeip/flush", nil, nil)
+}
+
+func (c *Client) FlushDNSCache(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/cache/dns/flush", nil, nil)
+}
+
+func (c *Client) ClearCache(ctx context.Context) error {
+	if err := c.FlushFakeIPCache(ctx); err != nil {
+		return err
+	}
+	return c.FlushDNSCache(ctx)
+}
+
+type ConnectionsWatchOptions struct {
+	Interval time.Duration
+}
+
+type ConnectionsWatch struct {
+	conn *websocket.Conn
+}
+
+type WatchEvent struct {
+	Connections []Connection
+	ReceivedAt  time.Time
+}
+
+func (c *Client) WatchConnections(ctx context.Context, opts ConnectionsWatchOptions) (*ConnectionsWatch, error) {
+	u := *c.base
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	default:
+		return nil, &Error{Kind: ErrSoftware, Msg: fmt.Sprintf("cannot build websocket URL from endpoint scheme %q", c.base.Scheme)}
+	}
+	u.Path = strings.TrimRight(c.base.EscapedPath(), "/") + "/connections"
+	values := u.Query()
+	if opts.Interval > 0 {
+		values.Set("interval", fmt.Sprintf("%d", opts.Interval.Milliseconds()))
+	}
+	u.RawQuery = values.Encode()
+
+	headers := http.Header{}
+	if c.secret != "" {
+		headers.Set("Authorization", "Bearer "+c.secret)
+	}
+	conn, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: headers})
+	if err != nil {
+		if resp != nil {
+			switch resp.StatusCode {
+			case http.StatusUnauthorized, http.StatusForbidden:
+				return nil, &Error{Kind: ErrAuth, Msg: "missing/invalid secret; set MIHOMOCTL_SECRET, or use --secret <value> if you accept the leak risk"}
+			case http.StatusBadRequest:
+				return nil, &Error{Kind: ErrBadRequest, Msg: "mihomo controller rejected the websocket request"}
+			case http.StatusNotFound:
+				return nil, &Error{Kind: ErrNotFound, Msg: "mihomo endpoint or requested resource not found"}
+			}
+			if resp.StatusCode >= 500 {
+				return nil, &Error{Kind: ErrUnavailable, Msg: fmt.Sprintf("mihomo controller returned HTTP %d", resp.StatusCode)}
+			}
+		}
+		return nil, &Error{Kind: ErrUnavailable, Msg: fmt.Sprintf("cannot connect to mihomo websocket at %s: %v", u.String(), err)}
+	}
+	conn.SetReadLimit(16 << 20)
+	return &ConnectionsWatch{conn: conn}, nil
+}
+
+func (w *ConnectionsWatch) Read(ctx context.Context) (WatchEvent, error) {
+	_, data, err := w.conn.Read(ctx)
+	if err != nil {
+		return WatchEvent{}, err
+	}
+	var snapshot ConnectionsSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return WatchEvent{}, &Error{Kind: ErrSoftware, Msg: fmt.Sprintf("cannot decode mihomo websocket event: %v", err)}
+	}
+	return WatchEvent{Connections: snapshot.Connections, ReceivedAt: time.Now().UTC()}, nil
+}
+
+func (w *ConnectionsWatch) Close() error {
+	return w.conn.Close(websocket.StatusNormalClosure, "")
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	return c.doWithTimeout(ctx, method, path, body, out, c.timeout)
 }
@@ -182,6 +282,9 @@ func (c *Client) doWithTimeout(ctx context.Context, method, path string, body an
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return &Error{Kind: ErrAuth, Msg: "missing/invalid secret; set MIHOMOCTL_SECRET, or use --secret <value> if you accept the leak risk"}
 	}
+	if resp.StatusCode == http.StatusBadRequest {
+		return &Error{Kind: ErrBadRequest, Msg: controllerErrorMessage(resp.Body, "mihomo controller rejected the request")}
+	}
 	if resp.StatusCode == http.StatusNotFound {
 		return &Error{Kind: ErrNotFound, Msg: "mihomo endpoint or requested resource not found"}
 	}
@@ -195,6 +298,16 @@ func (c *Client) doWithTimeout(ctx context.Context, method, path string, body an
 		return &Error{Kind: ErrSoftware, Msg: fmt.Sprintf("cannot decode mihomo response: %v", err)}
 	}
 	return nil
+}
+
+func controllerErrorMessage(r io.Reader, fallback string) string {
+	var v struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r).Decode(&v); err == nil && strings.TrimSpace(v.Message) != "" {
+		return v.Message
+	}
+	return fallback
 }
 
 type Config struct {
@@ -253,4 +366,19 @@ type ProxyProvider struct {
 type ProviderProxy struct {
 	Name  string `json:"name"`
 	Alive bool   `json:"alive"`
+}
+
+type DNSResponse struct {
+	Status     int         `json:"Status"`
+	Questions  []DNSRecord `json:"Question"`
+	Answers    []DNSRecord `json:"Answer"`
+	Authority  []DNSRecord `json:"Authority"`
+	Additional []DNSRecord `json:"Additional"`
+}
+
+type DNSRecord struct {
+	Name string `json:"name"`
+	Type uint16 `json:"type"`
+	TTL  uint32 `json:"TTL"`
+	Data string `json:"data"`
 }

@@ -3,9 +3,9 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -38,29 +38,36 @@ type config struct {
 }
 
 func Run(args []string, out, errOut io.Writer) int {
-	if err := run(args, out); err != nil {
-		var ce *cliError
-		if errors.As(err, &ce) {
-			fmt.Fprintln(errOut, ce.msg)
-			return ce.code
-		}
-		fmt.Fprintf(errOut, "unexpected error: %v\n", err)
-		return exitSoftware
+	if err, cfg := runWithConfig(args, out); err != nil {
+		return renderError(err, cfg.jsonOut, errOut)
 	}
 	return exitOK
 }
 
 func run(args []string, out io.Writer) error {
-	cmd := newRootCommand(out)
+	err, _ := runWithConfig(args, out)
+	return err
+}
+
+func runWithConfig(args []string, out io.Writer) (error, config) {
+	cmd, cfg := newRootCommandWithConfig(out)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	cmd.SetContext(ctx)
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
-		return normalizeCobraErr(err)
+		return normalizeCobraErr(err), *cfg
 	}
-	return nil
+	return nil, *cfg
 }
 
 func newRootCommand(out io.Writer) *cobra.Command {
-	cfg := config{
+	cmd, _ := newRootCommandWithConfig(out)
+	return cmd
+}
+
+func newRootCommandWithConfig(out io.Writer) (*cobra.Command, *config) {
+	cfg := &config{
 		endpoint: getenvDefault("MIHOMOCTL_ENDPOINT", defaultEndpoint),
 		timeout:  defaultTimeout,
 	}
@@ -78,8 +85,8 @@ func newRootCommand(out io.Writer) *cobra.Command {
 	root.PersistentFlags().StringVarP(&cfg.secret, "secret", "s", "", "mihomo secret; prefer MIHOMOCTL_SECRET to avoid shell history/process-list leaks")
 	root.PersistentFlags().BoolVar(&cfg.jsonOut, "json", false, "emit JSON output")
 	root.PersistentFlags().DurationVar(&cfg.timeout, "timeout", cfg.timeout, "request timeout")
-	root.AddCommand(newStatusCommand(out, &cfg), newProxyCommand(out, &cfg), newModeCommand(out, &cfg), newGroupCommand(out, &cfg), newConnectionsCommand(out, &cfg), newRulesCommand(out, &cfg), newProvidersCommand(out, &cfg), newManCommand())
-	return root
+	root.AddCommand(newStatusCommand(out, cfg), newProxyCommand(out, cfg), newModeCommand(out, cfg), newGroupCommand(out, cfg), newConnectionsCommand(out, cfg), newRulesCommand(out, cfg), newProvidersCommand(out, cfg), newManCommand())
+	return root, cfg
 }
 
 func newClient(cfg config) (*mihomo.Client, error) {

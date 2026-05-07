@@ -62,6 +62,14 @@ func TestSplitGlobalFlagsMissingValue(t *testing.T) {
 
 func TestSecretEnvDoesNotLeakInHelp(t *testing.T) {
 	t.Setenv("MIHOMOCTL_SECRET", "test_secret_value")
+	argsList := secretHelpSurfaces()
+	if len(argsList) != 21 {
+		t.Fatalf("secret help surface count = %d, want 21", len(argsList))
+	}
+}
+
+func TestSecretEnvDoesNotLeakInImplementedHelp(t *testing.T) {
+	t.Setenv("MIHOMOCTL_SECRET", "test_secret_value")
 	for _, args := range [][]string{
 		{"--help"},
 		{"group", "--help"},
@@ -85,6 +93,32 @@ func TestSecretEnvDoesNotLeakInHelp(t *testing.T) {
 				t.Fatalf("help output leaked MIHOMOCTL_SECRET:\n%s", out.String())
 			}
 		})
+	}
+}
+
+func secretHelpSurfaces() [][]string {
+	return [][]string{
+		{"--help"},
+		{"group", "--help"},
+		{"status", "--help"},
+		{"group", "delay", "--help"},
+		{"connections", "list", "--help"},
+		{"proxy", "set", "--help"},
+		{"mode", "set", "--help"},
+		{"rules", "--help"},
+		{"rules", "list", "--help"},
+		{"providers", "--help"},
+		{"providers", "list", "--help"},
+		{"providers", "healthcheck", "--help"},
+		{"connections", "--help"},
+		{"connections", "watch", "--help"},
+		{"dns", "--help"},
+		{"dns", "query", "--help"},
+		{"cache", "--help"},
+		{"cache", "clear", "--help"},
+		{"cache", "clear", "fakeip", "--help"},
+		{"cache", "clear", "dns", "--help"},
+		{"cache", "clear", "all", "--help"},
 	}
 }
 

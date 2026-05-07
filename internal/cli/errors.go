@@ -8,8 +8,10 @@ import (
 )
 
 type cliError struct {
-	code int
-	msg  string
+	code    int
+	msg     string
+	errCode string
+	details any
 }
 
 func (e *cliError) Error() string { return e.msg }
@@ -26,6 +28,8 @@ func mapErr(err error) error {
 	switch me.Kind {
 	case mihomo.ErrAuth:
 		return &cliError{code: exitNoPerm, msg: me.Msg}
+	case mihomo.ErrBadRequest:
+		return &cliError{code: exitUsage, msg: me.Msg}
 	case mihomo.ErrNotFound:
 		return &cliError{code: exitNotFound, msg: me.Msg}
 	case mihomo.ErrUnavailable:
