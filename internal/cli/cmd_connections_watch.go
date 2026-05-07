@@ -183,6 +183,7 @@ func writeStreamErrorAndReturn(out io.Writer, cfg config, code int, errCode, msg
 		if err := writeStreamError(out, ce); err != nil {
 			return err
 		}
+		ce.suppressRender = true
 	}
 	return ce
 }

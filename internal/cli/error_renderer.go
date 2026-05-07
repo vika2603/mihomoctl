@@ -13,6 +13,9 @@ func renderError(err error, jsonMode bool, errOut io.Writer) int {
 		if ce.code == exitOK {
 			return exitOK
 		}
+		if ce.suppressRender {
+			return ce.code
+		}
 		if jsonMode {
 			if err := writeErrorEnvelope(errOut, ce); err != nil {
 				fmt.Fprintf(errOut, "cannot write JSON error output: %v\n", err)

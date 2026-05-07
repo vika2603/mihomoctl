@@ -8,10 +8,11 @@ import (
 )
 
 type cliError struct {
-	code    int
-	msg     string
-	errCode string
-	details any
+	code           int
+	msg            string
+	errCode        string
+	details        any
+	suppressRender bool
 }
 
 func (e *cliError) Error() string { return e.msg }
