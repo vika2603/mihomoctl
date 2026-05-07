@@ -58,9 +58,11 @@ func newProxyCommand(out io.Writer, cfg *config) *cobra.Command {
 }
 
 func newProxyListCommand(out io.Writer, cfg *config) *cobra.Command {
+	var opts proxyListOptions
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List selectable proxy groups and nodes",
+		Short: "List selectable proxy groups",
+		Long:  "List selectable proxy groups as a compact summary.\n\nUse --verbose to include every candidate node.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usage("proxy list takes no arguments")
@@ -69,11 +71,25 @@ func newProxyListCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runProxyList(ctx, out, *cfg, client)
+				return runProxyList(ctx, out, *cfg, client, opts)
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "include every candidate node")
 	return cmd
+}
+
+type proxyListOptions struct {
+	verbose bool
+}
+
+var proxyListColumns = render.TableSpec{
+	Columns: []render.Column{
+		{Name: "name"},
+		{Name: "type"},
+		{Name: "selected"},
+		{Name: "candidates"},
+	},
 }
 
 func newProxySetCommand(out io.Writer, cfg *config) *cobra.Command {
@@ -224,7 +240,7 @@ func runModeSet(ctx context.Context, out io.Writer, cfg config, client *mihomo.C
 	return nil
 }
 
-func runProxyList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client) error {
+func runProxyList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, opts proxyListOptions) error {
 	proxies, err := client.ListProxies(ctx)
 	if err != nil {
 		return mapErr(err)
@@ -232,6 +248,9 @@ func runProxyList(ctx context.Context, out io.Writer, cfg config, client *mihomo
 	groups := selectableGroups(proxies)
 	if cfg.jsonOut {
 		return render.WriteJSON(out, map[string]any{"groups": groups})
+	}
+	if !opts.verbose {
+		return writeProxyListSummary(out, groups)
 	}
 	for _, g := range groups {
 		fmt.Fprintf(out, "%s", g.Name)
@@ -248,6 +267,27 @@ func runProxyList(ctx context.Context, out io.Writer, cfg config, client *mihomo
 		}
 	}
 	return nil
+}
+
+func writeProxyListSummary(out io.Writer, groups []groupOutput) error {
+	if len(groups) == 0 {
+		fmt.Fprintln(out, "no selectable proxy groups")
+		return nil
+	}
+	cols, err := proxyListColumns.Select(nil)
+	if err != nil {
+		return usage("%s", err)
+	}
+	rows := make([][]string, len(groups))
+	for i, g := range groups {
+		rows[i] = []string{
+			g.Name,
+			emptyDash(g.Type),
+			emptyDash(g.Selected),
+			fmt.Sprintf("%d", len(g.Candidates)),
+		}
+	}
+	return render.WriteTable(out, cols, rows)
 }
 
 func runProxySet(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, group, node string) error {
