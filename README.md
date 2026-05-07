@@ -67,11 +67,23 @@ export MIHOMOCTL_ENDPOINT='http://127.0.0.1:9090'
 mihomoctl status
 ```
 
-Expected output:
+Expected output (compact summary, default):
 
 ```
 mode: rule
-version: v1.18.5
+version: v1.19.24
+groups: 24 selectable (use --verbose to list)
+```
+
+For the full per-group selection list, pass `--verbose`:
+
+```bash
+mihomoctl status --verbose
+```
+
+```
+mode: rule
+version: v1.19.24
 groups:
   PROXY: HK-01
   AUTO: JP-fastest
@@ -121,10 +133,10 @@ PROXY: JP-01 (was HK-01)
 Re-check:
 
 ```bash
-mihomoctl status
+mihomoctl status --verbose
 ```
 
-You should see `PROXY: JP-01` in the `groups:` section. That's the node-switch loop.
+You should see `PROXY: JP-01` in the `groups:` section. That's the node-switch loop. (Default `mihomoctl status` returns the compact summary; use `--verbose` to see every group's selected node.)
 
 ## Test, switch, verify (the full daily-use loop)
 
