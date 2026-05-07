@@ -96,13 +96,23 @@ Common failures:
 
 ## Switch a node
 
-List proxies to find a group and a node:
+List proxies to find a group and a node. The default output is a compact summary table (one row per selectable group):
 
 ```bash
 mihomoctl proxy list
 ```
 
-Output:
+```
+name	type	selected	candidates
+AUTO	URLTest	JP-fastest	3
+PROXY	Selector	HK-01	4
+```
+
+For the full per-group candidate list with the selected-node marker, pass `--verbose`:
+
+```bash
+mihomoctl proxy list --verbose
+```
 
 ```
 AUTO -> JP-fastest
@@ -116,7 +126,7 @@ PROXY -> HK-01
     US-01
 ```
 
-`*` marks the currently-selected node. Groups with `type: Selector` (visible via `--json`) accept `proxy set`; policy groups (`URLTest`, `Fallback`, etc.) are read-only — try `proxy set` on them and the command exits 75.
+In the verbose output, `*` marks the currently-selected node. Groups with `type: Selector` (visible in the summary `type` column or via `--json`) accept `proxy set`; policy groups (`URLTest`, `Fallback`, etc.) are read-only — try `proxy set` on them and the command exits 75.
 
 Switch the `PROXY` group to a different node:
 
