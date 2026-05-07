@@ -7,8 +7,12 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 ### Added
 
 - `mihomoctl system ping` and `mihomoctl system version` — read-only controller runtime checks for v1.0. Both commands use `GET /version`: `system ping` treats a successful version response as the controller health check and reports endpoint plus version; `system version` prints the controller version directly. Both commands support `--json`. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.2)
-- `mihomoctl groups list` and `mihomoctl groups get <name>` — read-only proxy group inspection commands for v1.0, backed by `GET /group` and `GET /group/{name}`. The existing pre-1.0 `group delay <group>` command remains unchanged while v1.0 introduces the plural `groups` namespace for group snapshots. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.4)
+- `mihomoctl groups list` and `mihomoctl groups get <name>` — read-only proxy group inspection commands for v1.0, backed by `GET /group` and `GET /group/{name}`. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.4)
 - `mihomoctl connections watch --limit <N>` — cap snapshot output at N connections per emit. Applies to all three output paths (TTY in-place table / non-TTY tab-separated row append / `--json` NDJSON literal); `--limit 0` or omitted = unlimited (sustained from v0.4 default behavior). G1 fix per Iris vika UX catch — `connections list` had `--limit` but `connections watch` did not. (PR <TBD>, PRD-0009 §2.5)
+
+### Breaking
+
+- `mihomoctl group delay <name>` is removed for v1.0 and replaced by `mihomoctl groups delay <name>`. The upstream endpoint is unchanged (`GET /group/{name}/delay`); only the CLI namespace moves to the plural `groups` command family per ADR-0015 §5.4. Migration: replace `mihomoctl group delay X` with `mihomoctl groups delay X`.
 
 ### Changed
 
