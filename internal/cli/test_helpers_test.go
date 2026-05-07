@@ -16,6 +16,8 @@ type fakeOptions struct {
 	versionCode     int
 	proxyCode       int
 	proxyBody       string
+	groupCode       int
+	groupBody       string
 	proxies         map[string]any
 	groupDelays     map[string]map[string]int
 	onGroupDelay    func(group string, query url.Values)
@@ -58,6 +60,9 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 	}
 	if opts.proxyCode == 0 {
 		opts.proxyCode = http.StatusOK
+	}
+	if opts.groupCode == 0 {
+		opts.groupCode = http.StatusOK
 	}
 	if opts.connectionsCode == 0 {
 		opts.connectionsCode = http.StatusOK
@@ -173,16 +178,48 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("/group", func(w http.ResponseWriter, r *http.Request) {
+		maybeDelay()
+		if !requireAuth(w, r) {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(opts.groupCode)
+		if opts.groupBody != "" {
+			_, _ = w.Write([]byte(opts.groupBody))
+			return
+		}
+		if opts.groupCode >= 200 && opts.groupCode < 300 {
+			writeTestJSON(t, w, map[string]any{"proxies": groupListFromProxies(opts.proxies)})
+		}
+	})
 	mux.HandleFunc("/group/", func(w http.ResponseWriter, r *http.Request) {
 		maybeDelay()
 		if !requireAuth(w, r) {
 			return
 		}
-		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/delay") {
+		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		groupPath := strings.TrimPrefix(r.URL.Path, "/group/")
+		if !strings.HasSuffix(r.URL.Path, "/delay") {
+			group, err := url.PathUnescape(groupPath)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			proxy, ok := proxyFromFake(opts.proxies, group)
+			if !ok || len(toStringSlice(proxy["all"])) == 0 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			writeTestJSON(t, w, proxy)
+			return
+		}
 		groupPath = strings.TrimSuffix(groupPath, "/delay")
 		group, err := url.PathUnescape(groupPath)
 		if err != nil {
@@ -329,6 +366,50 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 		w.WriteHeader(opts.dnsFlushCode)
 	})
 	return httptest.NewServer(mux)
+}
+
+func groupListFromProxies(proxies map[string]any) []map[string]any {
+	groups := make([]map[string]any, 0)
+	for name := range proxies {
+		proxy, ok := proxyFromFake(proxies, name)
+		if !ok || len(toStringSlice(proxy["all"])) == 0 {
+			continue
+		}
+		groups = append(groups, proxy)
+	}
+	return groups
+}
+
+func proxyFromFake(proxies map[string]any, name string) (map[string]any, bool) {
+	v, ok := proxies[name]
+	if !ok {
+		return nil, false
+	}
+	proxy, ok := v.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	if proxy["name"] == nil || proxy["name"] == "" {
+		proxy = cloneMap(proxy)
+		proxy["name"] = name
+	}
+	return proxy, true
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func toStringSlice(v any) []string {
+	items, ok := v.([]string)
+	if ok {
+		return items
+	}
+	return nil
 }
 
 func writeTestJSON(t testingT, w http.ResponseWriter, v any) {
