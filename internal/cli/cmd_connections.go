@@ -129,13 +129,13 @@ func runConnectionsList(ctx context.Context, out io.Writer, cfg config, client *
 
 func connectionRow(c connectionOutput, cols []render.Column) []string {
 	values := map[string]string{
-		"started_at":  c.StartedAt,
-		"source":      c.Source,
-		"destination": c.Destination,
-		"host":        c.Host,
-		"network":     c.Network,
-		"rule":        c.Rule,
-		"chains":      strings.Join(c.Chains, " > "),
+		"started_at":  emptyDash(c.StartedAt),
+		"source":      emptyDash(c.Source),
+		"destination": emptyDash(c.Destination),
+		"host":        emptyDash(c.Host),
+		"network":     emptyDash(c.Network),
+		"rule":        emptyDash(c.Rule),
+		"chains":      emptyDash(strings.Join(c.Chains, " > ")),
 		"upload":      render.FormatBytes(c.UploadBytes),
 		"download":    render.FormatBytes(c.DownloadBytes),
 		"up_down":     render.FormatBytes(c.UploadBytes) + "/" + render.FormatBytes(c.DownloadBytes),

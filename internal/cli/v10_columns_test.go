@@ -62,6 +62,24 @@ func TestConnectionsListColumnsSelection(t *testing.T) {
 	}
 }
 
+func TestConnectionsListEmptySourceAndDestinationUseDashPlaceholder(t *testing.T) {
+	srv := fakeMihomoWith(t, fakeOptions{connections: []map[string]any{
+		testConnection("c-empty", "2026-05-07T04:00:00Z", "tcp", "", "", "", "", "", "", nil, 0, 0),
+	}})
+
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "connections", "list", "--columns", "source,destination,host,rule,chains"}, &out); err != nil {
+		t.Fatalf("connections list --columns empty fields failed: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, "source\tdestination\thost\trule\tchains") {
+		t.Fatalf("header missing expected columns:\n%s", out.String())
+	}
+	if !strings.Contains(got, "-\t-\t-\t-\t-") {
+		t.Fatalf("empty source/destination/host/rule/chains should render as dash placeholders:\n%s", out.String())
+	}
+}
+
 // TestProxyProvidersListColumnsSelection sanity check.
 func TestProxyProvidersListColumnsSelection(t *testing.T) {
 	srv := fakeMihomo(t, "")
