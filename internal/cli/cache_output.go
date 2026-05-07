@@ -23,15 +23,6 @@ type cacheResult struct {
 	Error   *render.ErrorBody `json:"error,omitempty"`
 }
 
-// riskInfo is the JSON shape mandated by ADR-0014 §5 for every successful
-// mutation. Callers (especially CI scripts and audit pipelines) inspect
-// risk.level to decide whether the action requires elevated approval logging.
-// Cache clear emits {"level":"low"} per ADR-0014 §4.1.
-type riskInfo struct {
-	Level   string `json:"level"`
-	Summary string `json:"summary,omitempty"`
-}
-
 func clearAllCaches(ctx context.Context, client *mihomo.Client) (cacheOutput, error) {
 	results := []cacheResult{
 		clearCacheTarget(ctx, client, "fakeip"),
