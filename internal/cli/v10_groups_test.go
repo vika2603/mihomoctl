@@ -81,6 +81,26 @@ func TestGroupsGetEscapesNameAndNotFound(t *testing.T) {
 	assertCLIError(t, err, exitNotFound, "mihomo endpoint or requested resource not found")
 }
 
+// TestGroupRemovedNamespaceExactWording locks the exact byte-anchored
+// migration message for the removed `group` namespace. PR #16 (P7 fuzzy
+// suggester) inadvertently sandwiched its multiline "Did you mean this?"
+// block in the middle of this hint, leaving a dangling "." prefix on the
+// migration sentence (Iris cycle 9 drift catch). The fix replaces the
+// cobra error + suggester output entirely for this known-migration case;
+// the suggester is intentionally NOT shown because we know the migration
+// target (`groups`), it is not a fuzzy guess.
+func TestGroupRemovedNamespaceExactWording(t *testing.T) {
+	want := `unknown command "group" for "mihomoctl"; the v1.0 command namespace is "groups". Use "mihomoctl groups delay <name>".`
+	err := run([]string{"group", "delay", "Proxy"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, want)
+	if err == nil {
+		return
+	}
+	if strings.Contains(err.Error(), "Did you mean this?") {
+		t.Fatalf("group removal hint must not include the cobra fuzzy suggester block; got: %s", err.Error())
+	}
+}
+
 func TestGroupsCommandUsageErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -88,7 +108,7 @@ func TestGroupsCommandUsageErrors(t *testing.T) {
 		want string
 	}{
 		{name: "bare groups", args: []string{"groups"}, want: "groups requires list, get, or delay"},
-		{name: "old group removed", args: []string{"group", "delay", "Proxy"}, want: `use "mihomoctl groups delay <name>"`},
+		{name: "old group removed", args: []string{"group", "delay", "Proxy"}, want: `Use "mihomoctl groups delay <name>"`},
 		{name: "unknown", args: []string{"groups", "lst"}, want: "Did you mean this?"},
 		{name: "list args", args: []string{"groups", "list", "extra"}, want: "groups list takes no arguments"},
 		{name: "get args", args: []string{"groups", "get"}, want: "groups get requires <name>"},
