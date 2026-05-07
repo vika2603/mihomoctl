@@ -75,9 +75,9 @@ func TestRulesListDefaultLimitAndEmptySchema(t *testing.T) {
 func TestProvidersListJSONShape(t *testing.T) {
 	srv := fakeMihomo(t, "")
 	var out bytes.Buffer
-	err := run([]string{"--endpoint", srv.URL, "providers", "list", "--json"}, &out)
+	err := run([]string{"--endpoint", srv.URL, "proxy-providers", "list", "--json"}, &out)
 	if err != nil {
-		t.Fatalf("providers list failed: %v", err)
+		t.Fatalf("proxy-providers list failed: %v", err)
 	}
 	var got providersOutput
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -100,9 +100,9 @@ func TestProvidersHealthcheckJSONShapeAndTrigger(t *testing.T) {
 		seen = provider
 	}})
 	var out bytes.Buffer
-	err := run([]string{"--endpoint", srv.URL, "providers", "healthcheck", "airport", "--json"}, &out)
+	err := run([]string{"--endpoint", srv.URL, "proxy-providers", "healthcheck", "airport", "--json"}, &out)
 	if err != nil {
-		t.Fatalf("providers healthcheck failed: %v", err)
+		t.Fatalf("proxy-providers healthcheck failed: %v", err)
 	}
 	if seen != "airport" {
 		t.Fatalf("healthcheck provider = %q, want airport", seen)
@@ -164,11 +164,11 @@ func TestProvidersHealthcheckTriggeredAtAfterSuccessfulTrigger(t *testing.T) {
 
 func TestProvidersHealthcheckNotFoundAndEmptyProvider(t *testing.T) {
 	srv := fakeMihomo(t, "")
-	err := run([]string{"--endpoint", srv.URL, "providers", "healthcheck", "rule-provider"}, &bytes.Buffer{})
+	err := run([]string{"--endpoint", srv.URL, "proxy-providers", "healthcheck", "rule-provider"}, &bytes.Buffer{})
 	assertCLIError(t, err, exitNotFound, `proxy provider "rule-provider" not found, available: airport, empty`)
 
 	var out bytes.Buffer
-	err = run([]string{"--endpoint", srv.URL, "providers", "healthcheck", "empty", "--json"}, &out)
+	err = run([]string{"--endpoint", srv.URL, "proxy-providers", "healthcheck", "empty", "--json"}, &out)
 	if err != nil {
 		t.Fatalf("empty provider healthcheck failed: %v", err)
 	}

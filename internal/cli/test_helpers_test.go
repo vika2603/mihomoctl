@@ -10,38 +10,39 @@ import (
 )
 
 type fakeOptions struct {
-	secret          string
-	configCode      int
-	configBody      string
-	versionCode     int
-	proxyCode       int
-	proxyBody       string
-	groupCode       int
-	groupBody       string
-	proxies         map[string]any
-	groupDelays     map[string]map[string]int
-	onGroupDelay    func(group string, query url.Values)
-	connectionsCode int
-	connectionsBody string
-	connections     []map[string]any
-	rulesCode       int
-	rulesBody       string
-	rules           []map[string]any
-	providersCode   int
-	providersBody   string
-	providers       map[string]any
-	ruleProviders   map[string]any
-	proxyDelays     map[string]int
-	onProxyDelay    func(proxy string, query url.Values)
-	healthcheckCode int
-	onHealthcheck   func(provider string)
-	dnsCode         int
-	dnsBody         string
-	fakeIPFlushCode int
-	dnsFlushCode    int
-	onCacheFlush    func(path string)
-	delay           time.Duration
-	onProxySet      func(uri string)
+	secret           string
+	configCode       int
+	configBody       string
+	versionCode      int
+	proxyCode        int
+	proxyBody        string
+	groupCode        int
+	groupBody        string
+	proxies          map[string]any
+	groupDelays      map[string]map[string]int
+	onGroupDelay     func(group string, query url.Values)
+	connectionsCode  int
+	connectionsBody  string
+	connections      []map[string]any
+	rulesCode        int
+	rulesBody        string
+	rules            []map[string]any
+	providersCode    int
+	providersBody    string
+	providers        map[string]any
+	ruleProviders    map[string]any
+	onProviderUpdate func(provider string)
+	proxyDelays      map[string]int
+	onProxyDelay     func(proxy string, query url.Values)
+	healthcheckCode  int
+	onHealthcheck    func(provider string)
+	dnsCode          int
+	dnsBody          string
+	fakeIPFlushCode  int
+	dnsFlushCode     int
+	onCacheFlush     func(path string)
+	delay            time.Duration
+	onProxySet       func(uri string)
 }
 
 func fakeMihomo(t testingT, secret string) *httptest.Server {
@@ -327,7 +328,7 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 		if !requireAuth(w, r) {
 			return
 		}
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet && r.Method != http.MethodPut {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -339,6 +340,21 @@ func fakeMihomoWith(t testingT, opts fakeOptions) *httptest.Server {
 		provider, err := url.PathUnescape(providerPath)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodPut {
+			if healthcheck {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if _, ok := opts.providers[provider]; !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if opts.onProviderUpdate != nil {
+				opts.onProviderUpdate(provider)
+			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if healthcheck {

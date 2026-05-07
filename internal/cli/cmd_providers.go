@@ -38,6 +38,19 @@ type providerHealthcheckOutput struct {
 	TriggeredAt string `json:"triggered_at"`
 }
 
+type providerUpdateOutput struct {
+	Provider    string    `json:"provider"`
+	Type        string    `json:"type"`
+	VehicleType string    `json:"vehicle_type"`
+	Health      string    `json:"health"`
+	NodeCount   int       `json:"node_count"`
+	UpdatedAt   string    `json:"updated_at"`
+	Updated     bool      `json:"updated"`
+	DryRun      bool      `json:"dry_run,omitempty"`
+	DryRunMode  string    `json:"dry_run_mode,omitempty"`
+	Risk        *riskInfo `json:"risk"`
+}
+
 type ruleProvidersOutput struct {
 	Total     int                  `json:"total"`
 	Providers []ruleProviderOutput `json:"providers"`
@@ -52,22 +65,9 @@ type ruleProviderOutput struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
-func newProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "providers",
-		Short: "Inspect proxy providers",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return usage("providers requires list or healthcheck")
-			}
-			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
-				return err
-			}
-			return usage("unknown providers subcommand %q", args[0])
-		},
-	}
-	cmd.AddCommand(newProvidersListCommand(out, cfg), newProvidersHealthcheckCommand(out, cfg))
-	return cmd
+type providerActionOptions struct {
+	yes    bool
+	dryRun bool
 }
 
 func newProxyProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
@@ -76,7 +76,7 @@ func newProxyProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 		Short: "Inspect proxy providers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return usage("proxy-providers requires list or get")
+				return usage("proxy-providers requires list, get, update, or healthcheck")
 			}
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
@@ -84,7 +84,7 @@ func newProxyProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 			return usage("unknown proxy-providers subcommand %q", args[0])
 		},
 	}
-	cmd.AddCommand(newProxyProvidersListCommand(out, cfg), newProxyProvidersGetCommand(out, cfg))
+	cmd.AddCommand(newProxyProvidersListCommand(out, cfg), newProxyProvidersGetCommand(out, cfg), newProxyProvidersUpdateCommand(out, cfg), newProxyProvidersHealthcheckCommand(out, cfg))
 	return cmd
 }
 
@@ -103,25 +103,6 @@ func newRuleProvidersCommand(out io.Writer, cfg *config) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newRuleProvidersListCommand(out, cfg))
-	return cmd
-}
-
-func newProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List proxy provider snapshots",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 0 {
-				return usage("providers list takes no arguments")
-			}
-			return nil
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runProvidersList(ctx, out, *cfg, client)
-			})
-		},
-	}
 	return cmd
 }
 
@@ -165,6 +146,55 @@ func newProxyProvidersGetCommand(out io.Writer, cfg *config) *cobra.Command {
 	return cmd
 }
 
+func newProxyProvidersUpdateCommand(out io.Writer, cfg *config) *cobra.Command {
+	opts := providerActionOptions{}
+	cmd := &cobra.Command{
+		Use:   "update <name>",
+		Short: "Update one proxy provider",
+		Long:  "Update one proxy provider.\n\nInventory: PUT /providers/proxies/{provider}.\nThis is a medium-impact mutation per ADR-0014 §4.2: it refetches provider contents and can change available nodes.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return usage("proxy-providers update requires <name>")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
+				return runProxyProvidersUpdate(ctx, out, *cfg, client, args[0], opts, time.Now)
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&opts.yes, "yes", false, "run without interactive confirmation")
+	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "preview the provider update without contacting the mutation endpoint")
+	return cmd
+}
+
+func newProxyProvidersHealthcheckCommand(out io.Writer, cfg *config) *cobra.Command {
+	opts := providerActionOptions{}
+	cmd := &cobra.Command{
+		Use:   "healthcheck <name>",
+		Short: "Trigger a proxy provider healthcheck and show the updated summary",
+		Long:  "Trigger a proxy provider healthcheck and show the updated summary.\n\nInventory: GET /providers/proxies/{provider}/healthcheck.\nThis is a low-impact side-effecting probe: it runs without a confirmation prompt, accepts --yes as a no-op, and rejects --dry-run.",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return usage("proxy-providers healthcheck requires <name>")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.dryRun {
+				return dryRunUnsupportedError("proxy-providers healthcheck "+args[0], "run the healthcheck")
+			}
+			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
+				return runProxyProvidersHealthcheck(ctx, out, *cfg, client, args[0], time.Now)
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&opts.yes, "yes", false, "no-op; accepted for flag uniformity with higher-tier mutations")
+	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "not supported; healthcheck has no real preview")
+	return cmd
+}
+
 func newRuleProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -179,25 +209,6 @@ func newRuleProvidersListCommand(out io.Writer, cfg *config) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
 				return runRuleProvidersList(ctx, out, *cfg, client)
-			})
-		},
-	}
-	return cmd
-}
-
-func newProvidersHealthcheckCommand(out io.Writer, cfg *config) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "healthcheck <name>",
-		Short: "Trigger a proxy provider healthcheck and show the updated summary",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return usage("providers healthcheck requires <name>")
-			}
-			return nil
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
-				return runProvidersHealthcheck(ctx, out, *cfg, client, args[0], time.Now)
 			})
 		},
 	}
@@ -240,6 +251,45 @@ func runProxyProvidersGet(ctx context.Context, out io.Writer, cfg config, client
 	return nil
 }
 
+func runProxyProvidersUpdate(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string, opts providerActionOptions, now func() time.Time) error {
+	provider, err := client.GetProxyProvider(ctx, name)
+	if err != nil {
+		return mapErr(err)
+	}
+	if opts.dryRun {
+		result := buildProviderUpdateOutput(name, provider, false)
+		result.DryRun = true
+		result.DryRunMode = "client_simulated"
+		if cfg.jsonOut {
+			return render.WriteJSON(out, result)
+		}
+		fmt.Fprintf(out, "%s\twould update\t%s\n", result.Provider, result.Risk.Level)
+		return nil
+	}
+	if err := confirmMediumImpact(stdinConfirmInput(), mediumConfirmOptions{
+		target:  "proxy-providers update " + name,
+		summary: fmt.Sprintf("Refetch proxy provider %q and replace its provider snapshot.", name),
+		yes:     opts.yes,
+	}); err != nil {
+		return err
+	}
+	if err := client.UpdateProxyProvider(ctx, name); err != nil {
+		return mapErr(err)
+	}
+	triggeredAt := now().UTC().Format(time.RFC3339)
+	provider, err = client.GetProxyProvider(ctx, name)
+	if err != nil {
+		return mapErr(err)
+	}
+	result := buildProviderUpdateOutput(name, provider, true)
+	result.UpdatedAt = nonEmpty(result.UpdatedAt, triggeredAt)
+	if cfg.jsonOut {
+		return render.WriteJSON(out, result)
+	}
+	fmt.Fprintf(out, "%s\tupdated\t%s\t%d\t%s\n", result.Provider, result.Health, result.NodeCount, result.UpdatedAt)
+	return nil
+}
+
 func runRuleProvidersList(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client) error {
 	providers, err := client.ListRuleProviders(ctx)
 	if err != nil {
@@ -258,6 +308,10 @@ func runRuleProvidersList(ctx context.Context, out io.Writer, cfg config, client
 		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%d\t%s\n", p.Name, p.Type, p.VehicleType, p.Behavior, p.RuleCount, p.UpdatedAt)
 	}
 	return nil
+}
+
+func runProxyProvidersHealthcheck(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string, now func() time.Time) error {
+	return runProvidersHealthcheck(ctx, out, cfg, client, name, now)
 }
 
 func runProvidersHealthcheck(ctx context.Context, out io.Writer, cfg config, client *mihomo.Client, name string, now func() time.Time) error {
@@ -311,6 +365,20 @@ func buildRuleProvidersOutput(providers map[string]mihomo.RuleProvider) ruleProv
 	return ruleProvidersOutput{Total: len(rows), Providers: rows}
 }
 
+func buildProviderUpdateOutput(name string, p mihomo.ProxyProvider, updated bool) providerUpdateOutput {
+	row := buildProviderOutput(name, p)
+	return providerUpdateOutput{
+		Provider:    row.Name,
+		Type:        row.Type,
+		VehicleType: row.VehicleType,
+		Health:      row.Health,
+		NodeCount:   row.NodeCount,
+		UpdatedAt:   row.UpdatedAt,
+		Updated:     updated,
+		Risk:        mediumRisk("Refetches one proxy provider and may replace its available node snapshot."),
+	}
+}
+
 func buildProviderOutput(name string, p mihomo.ProxyProvider) providerOutput {
 	if p.Name != "" {
 		name = p.Name
@@ -337,6 +405,13 @@ func buildRuleProviderOutput(name string, p mihomo.RuleProvider) ruleProviderOut
 		RuleCount:   p.RuleCount,
 		UpdatedAt:   formatTime(p.UpdatedAt),
 	}
+}
+
+func nonEmpty(s, fallback string) string {
+	if s != "" {
+		return s
+	}
+	return fallback
 }
 
 func buildProviderHealthcheckOutput(name string, p mihomo.ProxyProvider, triggeredAt string) providerHealthcheckOutput {

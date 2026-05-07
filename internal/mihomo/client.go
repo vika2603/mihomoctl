@@ -189,6 +189,11 @@ func (c *Client) GetProxyProvider(ctx context.Context, name string) (ProxyProvid
 	return v, err
 }
 
+func (c *Client) UpdateProxyProvider(ctx context.Context, name string) error {
+	path := "/providers/proxies/" + url.PathEscape(name)
+	return c.do(ctx, http.MethodPut, path, nil, nil)
+}
+
 func (c *Client) HealthcheckProxyProvider(ctx context.Context, name string) error {
 	path := "/providers/proxies/" + url.PathEscape(name) + "/healthcheck"
 	return c.do(ctx, http.MethodGet, path, nil, nil)
