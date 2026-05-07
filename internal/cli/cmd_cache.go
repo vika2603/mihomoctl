@@ -9,6 +9,16 @@ import (
 	"github.com/the-super-company/mihomoctl/internal/render"
 )
 
+// cacheClearLeafOptions captures per-leaf safety flags shared by every
+// `cache clear <target>` subcommand. ADR-0014 §4.1 ranks cache clear as a
+// low-impact mutation: no confirmation prompt, --yes is an optional no-op for
+// flag uniformity in automation, and --dry-run is rejected with an actionable
+// usage error so callers do not silently believe the cache was previewed.
+type cacheClearLeafOptions struct {
+	yes    bool
+	dryRun bool
+}
+
 func newCacheCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cache",
@@ -32,6 +42,15 @@ func newCacheClearCommand(out io.Writer, cfg *config) *cobra.Command {
 		Use:   "clear",
 		Short: "Flush fakeip, DNS, or all mihomo caches",
 		Long: `Flush low-impact mihomo runtime caches.
+
+cache clear is classified low-impact in the v1.0 mutation safety matrix
+(ADR-0014 §4.1): the runtime keeps configuration and active connections
+untouched, so the command runs immediately without a confirmation prompt.
+
+Safety contract:
+  --yes      accepted for flag uniformity with higher-tier mutations; no-op.
+  --dry-run  not supported; cache clear has no real preview. Drop the flag
+             to perform the flush.
 
 Valid targets:
   fakeip  flush the fake-IP cache
@@ -58,6 +77,7 @@ Examples:
 }
 
 func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) *cobra.Command {
+	opts := cacheClearLeafOptions{}
 	cmd := &cobra.Command{
 		Use:   target,
 		Short: short,
@@ -69,22 +89,28 @@ func newCacheClearLeafCommand(out io.Writer, cfg *config, target, short string) 
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.dryRun {
+				return usage("cache clear %s does not support --dry-run; it is a low-impact mutation that runs immediately. Drop --dry-run to flush the cache.", target)
+			}
 			return runWithClient(cmd, cfg, func(ctx context.Context, client *mihomo.Client) error {
 				return runCacheClear(ctx, out, *cfg, client, target)
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&opts.yes, "yes", false, "no-op; accepted for flag uniformity with higher-tier mutations")
+	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "not supported; cache clear has no real preview")
 	return cmd
 }
 
 func cacheClearLong(target string) string {
+	const safetyTrailer = "\n\nSafety: low-impact mutation (ADR-0014 §4.1). Runs immediately, no confirmation prompt. --yes is an accepted no-op; --dry-run is rejected with an actionable usage error."
 	switch target {
 	case "fakeip":
-		return "Flush mihomo's fakeip cache. Active connections and configuration are not changed."
+		return "Flush mihomo's fakeip cache. Active connections and configuration are not changed." + safetyTrailer
 	case "dns":
-		return "Flush mihomo's DNS resolver cache. Future DNS lookups may be repeated; active connections are not changed."
+		return "Flush mihomo's DNS resolver cache. Future DNS lookups may be repeated; active connections are not changed." + safetyTrailer
 	case "all":
-		return "Flush fakeip first, then DNS. If one cache fails, mihomoctl reports a partial failure with per-cache results."
+		return "Flush fakeip first, then DNS. If one cache fails, mihomoctl reports a partial failure with per-cache results." + safetyTrailer
 	default:
 		return ""
 	}
@@ -114,9 +140,18 @@ func runCacheClear(ctx context.Context, out io.Writer, cfg config, client *mihom
 		}
 		return mapErr(err)
 	}
+	result.Risk = lowRiskCacheClear(target)
 	if cfg.jsonOut {
 		return render.WriteJSON(out, result)
 	}
 	writeCacheHuman(out, result)
 	return nil
+}
+
+func lowRiskCacheClear(target string) *riskInfo {
+	summary := "Flushes the runtime cache only; configuration and active connections are not changed."
+	if target == "all" {
+		summary = "Flushes fakeip then DNS runtime caches only; configuration and active connections are not changed."
+	}
+	return &riskInfo{Level: "low", Summary: summary}
 }
