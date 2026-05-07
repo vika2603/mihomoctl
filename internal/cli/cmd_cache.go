@@ -31,9 +31,19 @@ func newCacheClearCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Flush fakeip, DNS, or all mihomo caches",
+		Long: `Flush low-impact mihomo runtime caches.
+
+Valid targets:
+  fakeip  flush the fake-IP cache
+  dns     flush the DNS resolver cache
+  all     flush fakeip first, then DNS
+
+Examples:
+  mihomoctl cache clear dns
+  mihomoctl cache clear all`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return usage("cache clear requires fakeip, dns, or all")
+				return usage("cache clear requires a target. Use 'cache clear fakeip', 'cache clear dns', or 'cache clear all'.")
 			}
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err

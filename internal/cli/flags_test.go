@@ -63,8 +63,8 @@ func TestSplitGlobalFlagsMissingValue(t *testing.T) {
 func TestSecretEnvDoesNotLeakInHelp(t *testing.T) {
 	t.Setenv("MIHOMOCTL_SECRET", "test_secret_value")
 	argsList := secretHelpSurfaces()
-	if len(argsList) != 21 {
-		t.Fatalf("secret help surface count = %d, want 21", len(argsList))
+	if len(argsList) != 24 {
+		t.Fatalf("secret help surface count = %d, want 24", len(argsList))
 	}
 }
 
@@ -99,6 +99,9 @@ func secretHelpSurfaces() [][]string {
 		{"providers", "healthcheck", "--help"},
 		{"connections", "--help"},
 		{"connections", "watch", "--help"},
+		{"conns", "--help"},
+		{"conns", "list", "--help"},
+		{"conns", "watch", "--help"},
 		{"dns", "--help"},
 		{"dns", "query", "--help"},
 		{"cache", "--help"},

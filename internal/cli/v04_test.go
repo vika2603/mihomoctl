@@ -104,6 +104,37 @@ func TestCacheClearJSONAndPartialFailureEnvelope(t *testing.T) {
 	}
 }
 
+func TestCacheClearBareErrorSuggestsTargets(t *testing.T) {
+	err := run([]string{"cache", "clear"}, &bytes.Buffer{})
+	assertCLIError(t, err, exitUsage, "cache clear requires a target")
+	assertCLIError(t, err, exitUsage, "cache clear dns")
+}
+
+func TestConnectionsListHumanFormatsIECBytesAndAlias(t *testing.T) {
+	srv := fakeMihomoWith(t, fakeOptions{connections: []map[string]any{
+		testConnection("c-large", "2026-05-07T04:00:00Z", "tcp", "192.0.2.20", "54000", "203.0.113.1", "443", "example.com", "MATCH", []string{"Proxy"}, 1536, 1048576),
+	}})
+	var out bytes.Buffer
+	if err := run([]string{"--endpoint", srv.URL, "conns", "list"}, &out); err != nil {
+		t.Fatalf("conns list failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "1.5 KiB/1.0 MiB") {
+		t.Fatalf("human output missing IEC bytes:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := run([]string{"--endpoint", srv.URL, "conns", "list", "--json"}, &out); err != nil {
+		t.Fatalf("conns list --json failed: %v", err)
+	}
+	var got connectionsOutput
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if got.Connections[0].UploadBytes != 1536 || got.Connections[0].DownloadBytes != 1048576 {
+		t.Fatalf("JSON bytes should stay int64: %+v", got.Connections[0])
+	}
+}
+
 func TestConnectionsWatchAuthFailureUsesNoPermEnvelope(t *testing.T) {
 	srv := fakeMihomo(t, "secret")
 	var out, errOut bytes.Buffer
@@ -127,18 +158,9 @@ func TestConnectionsWatchAuthFailureUsesNoPermEnvelope(t *testing.T) {
 }
 
 func TestConnectionsWatchJSONEventFilterAndReconnectExhausted(t *testing.T) {
-	var raw struct {
-		Connections []mihomo.Connection `json:"connections"`
-	}
-	b, err := json.Marshal(map[string]any{"connections": testConnections()})
-	if err != nil {
-		t.Fatalf("marshal fixture: %v", err)
-	}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		t.Fatalf("unmarshal fixture: %v", err)
-	}
+	raw := decodeTestConnections(t)
 	var out bytes.Buffer
-	err = writeConnectionWatchEvent(&out, config{jsonOut: true}, connectionsWatchOptions{filter: "google.com"}, mihomo.WatchEvent{Connections: raw.Connections, ReceivedAt: time.Date(2026, 5, 7, 1, 2, 3, 0, time.UTC)})
+	err := writeConnectionWatchEvent(&out, config{jsonOut: true}, connectionsWatchOptions{filter: "google.com"}, mihomo.WatchEvent{Connections: raw.Connections, ReceivedAt: time.Date(2026, 5, 7, 1, 2, 3, 0, time.UTC)})
 	if err != nil {
 		t.Fatalf("write event: %v", err)
 	}
@@ -165,6 +187,60 @@ func TestConnectionsWatchJSONEventFilterAndReconnectExhausted(t *testing.T) {
 	}
 }
 
+func TestConnectionsWatchLimitAppliesToJSONAppendAndTUI(t *testing.T) {
+	assertCLIError(t, run([]string{"conns", "watch", "--limit", "-1"}, &bytes.Buffer{}), exitUsage, "--limit must be >= 0")
+
+	raw := decodeTestConnections(t)
+	event := mihomo.WatchEvent{Connections: raw.Connections, ReceivedAt: time.Date(2026, 5, 7, 1, 2, 3, 0, time.UTC)}
+
+	var out bytes.Buffer
+	if err := writeConnectionWatchEvent(&out, config{jsonOut: true}, connectionsWatchOptions{limit: 1}, event); err != nil {
+		t.Fatalf("write JSON event: %v", err)
+	}
+	var got connectionWatchEvent
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid NDJSON event: %v\n%s", err, out.String())
+	}
+	if len(got.Data.Connections) != 1 || got.Data.Connections[0].ID != "c-new" {
+		t.Fatalf("JSON limit result = %+v", got.Data.Connections)
+	}
+
+	out.Reset()
+	if err := writeConnectionWatchEvent(&out, config{jsonOut: true}, connectionsWatchOptions{limit: 0}, event); err != nil {
+		t.Fatalf("write unlimited JSON event: %v", err)
+	}
+	got = connectionWatchEvent{}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid unlimited NDJSON event: %v\n%s", err, out.String())
+	}
+	if len(got.Data.Connections) != 3 {
+		t.Fatalf("default JSON limit should be unlimited: %+v", got.Data.Connections)
+	}
+
+	out.Reset()
+	if err := writeConnectionWatchEvent(&out, config{}, connectionsWatchOptions{limit: 2}, event); err != nil {
+		t.Fatalf("write append event: %v", err)
+	}
+	if strings.Contains(out.String(), "142.250.72.14:443") || strings.Count(strings.TrimSpace(out.String()), "\n") != 2 {
+		t.Fatalf("append output should include header plus two limited rows:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "300 B/400 B") || !strings.Contains(out.String(), "500 B/600 B") {
+		t.Fatalf("append output missing formatted bytes:\n%s", out.String())
+	}
+
+	tui := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1, filter: "cloudflare"}, event, filterWatchConnections(event.Connections, "cloudflare", 1), 0)
+	for _, want := range []string{"mihomoctl connections watch", "matches: 1", "filter: cloudflare", "300 B/400 B"} {
+		if !strings.Contains(tui, want) {
+			t.Fatalf("TUI output missing %q:\n%s", want, tui)
+		}
+	}
+
+	narrow := renderConnectionWatchTUI(connectionsWatchOptions{limit: 1}, event, filterWatchConnections(event.Connections, "", 1), 59)
+	if !strings.Contains(narrow, "id") || strings.Contains(narrow, "started_at") || !strings.Contains(narrow, "c-new") {
+		t.Fatalf("narrow TUI output should use key columns only:\n%s", narrow)
+	}
+}
+
 func TestConnectionsWatchCanceledContextExitsCleanly(t *testing.T) {
 	srv := httptest.NewServer(http.NewServeMux())
 	defer srv.Close()
@@ -178,4 +254,21 @@ func TestConnectionsWatchCanceledContextExitsCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canceled context should exit cleanly: %v", err)
 	}
+}
+
+func decodeTestConnections(t *testing.T) struct {
+	Connections []mihomo.Connection `json:"connections"`
+} {
+	t.Helper()
+	var raw struct {
+		Connections []mihomo.Connection `json:"connections"`
+	}
+	b, err := json.Marshal(map[string]any{"connections": testConnections()})
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	return raw
 }

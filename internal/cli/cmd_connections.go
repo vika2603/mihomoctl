@@ -41,8 +41,9 @@ type connectionOutput struct {
 
 func newConnectionsCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "connections",
-		Short: "Inspect active mihomo connections",
+		Use:     "connections",
+		Aliases: []string{"conns"},
+		Short:   "Inspect active mihomo connections",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return usage("connections requires list")
@@ -98,8 +99,8 @@ func runConnectionsList(ctx context.Context, out io.Writer, cfg config, client *
 	}
 	fmt.Fprintln(out, "started_at\tsource\tdestination\tnetwork\trule\tchains\tup/down")
 	for _, c := range result.Connections {
-		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\t%s\t%d/%d\n",
-			c.StartedAt, c.Source, c.Destination, c.Network, c.Rule, strings.Join(c.Chains, " > "), c.UploadBytes, c.DownloadBytes)
+		fmt.Fprintf(out, "%s\t%s\t%s\t%s\t%s\t%s\t%s/%s\n",
+			c.StartedAt, c.Source, c.Destination, c.Network, c.Rule, strings.Join(c.Chains, " > "), render.FormatBytes(c.UploadBytes), render.FormatBytes(c.DownloadBytes))
 	}
 	return nil
 }

@@ -277,20 +277,26 @@ When the question is "is traffic hitting the right node **right now**" or "why i
 
 This works particularly well over SSH: keep `connections watch` running in one tmux pane, drive `dns query` / `cache clear` / `proxy set` from another, and watch the stream react.
 
-### 1. Stream live connections — `connections watch`
+### 1. Stream live connections — `connections watch` _(or alias `conns watch`, v0.4.1)_
 
 In one terminal, start the watcher:
 
 ```bash
 mihomoctl connections watch --filter google.com
+# or, equivalently (v0.4.1):
+mihomoctl conns watch --filter google.com
 ```
 
-Each tick of mihomo's WebSocket emits a snapshot of currently-active connections (filtered if `--filter` is set). Output is a header row plus one row per matching connection, repeated on each non-empty snapshot:
+**On a TTY** (interactive terminal, v0.4.1), the watcher renders an in-place table that redraws on each upstream snapshot — alternate-screen + sticky header showing `received_at` + match count + filter, sober single-color styling, Ctrl-C cleanly restores the screen and exits 0. See [reference § connections watch — TTY output](./docs/reference.md#tty-interactive-default-v041) for the full rendering spec.
+
+**On a pipe / non-TTY** (e.g. `connections watch | grep ...`, `connections watch | tee log`, or `TERM=dumb`), the watcher falls back to the v0.4 tab-separated row append behavior — preserved byte-identical, except the `up`/`down` column now uses IEC binary units (v0.4.1):
 
 ```
 received_at	started_at	source	destination	network	rule	chains	up/down
-2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55322	142.250.80.46:443	tcp	DOMAIN-SUFFIX,google.com,PROXY	PROXY > JP-01	256/1024
+2026-05-07T03:00:05Z	2026-05-07T03:00:01Z	192.168.1.10:55322	142.250.80.46:443	tcp	DOMAIN-SUFFIX,google.com,PROXY	PROXY > JP-01	256 B/1.0 KiB
 ```
+
+Cap snapshot output at N connections per emit with `--limit N` (v0.4.1). Applies to all three paths (TTY in-place, non-TTY append, `--json` NDJSON); `--limit 0` or omitted preserves the v0.4 unlimited default.
 
 > **These are snapshots, not per-event open/close pushes.** mihomo's `/connections` WebSocket exposes a periodic poll of the entire connection table; mihomoctl forwards each poll. `event_action` in the JSON envelope is always `"snapshot"` in v0.4 — see [reference § connections watch](./docs/reference.md#mihomoctl-connections-watch).
 

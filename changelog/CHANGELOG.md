@@ -4,6 +4,31 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 ## [Unreleased]
 
+### Added
+
+- `mihomoctl connections watch --limit <N>` — cap snapshot output at N connections per emit. Applies to all three output paths (TTY in-place table / non-TTY tab-separated row append / `--json` NDJSON literal); `--limit 0` or omitted = unlimited (sustained from v0.4 default behavior). G1 fix per Iris vika UX catch — `connections list` had `--limit` but `connections watch` did not. (PR <TBD>, PRD-0009 §2.5)
+
+### Changed
+
+- `mihomoctl connections watch` human output now renders an **in-place table on TTY** (alternate-screen + clear+home + sticky header showing `received_at` + match count + filter, redraw on each upstream snapshot, Ctrl-C clean exit 0 with cursor restored). **Non-TTY / pipe** behavior is unchanged: tab-separated row append per snapshot, byte-identical to v0.4 (`connections watch | grep ...` scripts unaffected). **`--json` mode** is unchanged: NDJSON literal regardless of TTY. TTY detection via `isatty(stdout)` + `TERM=dumb` fallback. Sober styling per CEO directive (single-color, no gradient/alarm-color, light border, bold for emphasis instead of color, `NO_COLOR` env var honored). Implementation uses `github.com/charmbracelet/lipgloss/table` as a render-only helper (no Bubble Tea event loop import); `internal/streaming` supervisor / Ctrl-C / EPIPE / NDJSON paths are unchanged. (PR <TBD>, PRD-0009 §2.3)
+- `mihomoctl connections` command tree gains alias `conns` (cobra `Aliases:["conns"]`). `mihomoctl conns` / `mihomoctl conns list` / `mihomoctl conns watch` are equivalent to their `connections` counterparts; the long form is retained (no deprecation). All docs / help / error text continue to use `connections` as the canonical name; cobra surfaces the alias automatically in `--help`. (PR <TBD>, PRD-0009 §2.2)
+- `mihomoctl connections list` and `mihomoctl connections watch` human output now formats the `up`/`down` columns with **IEC binary units** (`B` / `KiB` / `MiB` / `GiB`, one decimal place; values `< 1024` show as `N B` with no decimal). `--json` `upload_bytes` / `download_bytes` remain `int64` byte counts — JSON contract is unchanged. Implementation lives in `internal/render.FormatBytes`. (PR <TBD>, PRD-0009 §2.4)
+- `mihomoctl cache clear` (no subcommand) error wording is now actionable: `cache clear requires a target. Use 'cache clear fakeip', 'cache clear dns', or 'cache clear all'.` (was: `cache clear requires fakeip, dns, or all`). The cobra `Long` text also enumerates the three valid subcommands and includes a usage example block. Exit code `64` (cobra usage error) is unchanged. G4 fix per Iris vika UX catch. (PR <TBD>, PRD-0009 §2.6)
+
+### Internal
+
+- New dependency: `github.com/charmbracelet/lipgloss/table` (render-only — used for `connections watch` TTY table styling/borders; no Bubble Tea event-loop import). Added to `go.mod` / `go.sum`. The dependency is confined to `internal/render`; `internal/cli` / `internal/streaming` / `internal/mihomo` do not import it. (PRD-0009 §2.3 + ADR-0013)
+- `internal/render/format_bytes.go` — `FormatBytes(int64) string` helper, IEC binary units, used by `connections list/watch` human formatters. Pure int64 → string conversion, no secret path. (PRD-0009 §2.4)
+- `internal/render/connections_table.go` — TTY in-place table renderer for `connections watch`, lipgloss/table-based, sober styling defaults. Honors `NO_COLOR` env var; `TERM=dumb` short-circuits to non-TTY append path. (PRD-0009 §2.3)
+- Secret-leak `--help` regression coverage extended to **24 / 24** command surfaces cumulative (v0.4 21 sustained + 3 new alias invocation paths: `conns --help`, `conns list --help`, `conns watch --help`). The command-object count remains 15 leaves (alias is not a new command per cobra `Aliases` semantic). The auth functional regression `TestSecretEnvUsedAtExecution` continues unchanged from v0.2.
+
+### Stability
+
+- v0.4.1 is **additive + human-cosmetic** under [ADR-0011](../docs/adr/0011-contract-freeze.md): no `--json` contract change, no exit-code change, no envelope schema change. The `--limit` flag addition is additive (default unlimited preserves v0.4 behavior); the `conns` alias is backward-compatible (`connections` long form retained); IEC bytes formatting is human-default-only (`upload_bytes` / `download_bytes` `int64` JSON fields are byte-identical); the `cache clear` bare-error wording change is polish (exit code 64 sustained). No `Breaking` migration is required.
+
+[0.4.1]: https://github.com/vika2603/mihomoctl/compare/v0.4.0...HEAD
+
+## [0.4.0] - 2026-05-07
 
 ### Added
 
@@ -23,7 +48,7 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
   }
   ```
 
-  `code` and `category` are part of the contract; `message` is documentation-for-recognition and may evolve between minor 0.x releases without bumping the contract. The seven categories (per [ADR-0010](../docs/adr/0010-error-envelope-schema.md) v0.2 canonical) are sysexits-aligned: `usage` (64), `not_found` (66), `software` (70), `system` (71), `cant_output` (73), `tempfail` (75), and `noperm` (77). v0.5 adds an eighth, `mutation_aborted`, for the `config reload` / `service restart` family per ADR-0008. See [reference § JSON error envelope schema](../docs/reference.md#json-error-envelope-schema) for the full code/category contract and a side-by-side example showing a v0.3 `status --json` failure rendered in the new envelope alongside a v0.4 `cache clear all --json` partial failure.
+  `code` and `category` are part of the contract; `message` is documentation-for-recognition and may evolve between minor 0.x releases without bumping the contract. The seven categories (per [ADR-0010](../docs/adr/0010-error-envelope-schema.md) v0.2 canonical) are sysexits-aligned: `usage` (64), `not_found` (66), `software` (70), `system` (71), `cant_output` (73), `tempfail` (75), and `noperm` (77). v0.5 adds the `mutation_aborted` code under category `usage` (exit 64) for the `config reload` / `service restart` family — the category enum remains the seven listed above; new categories require an ADR-0010 amendment. See [reference § JSON error envelope schema](../docs/reference.md#json-error-envelope-schema) for the full code/category contract and a side-by-side example showing a v0.3 `status --json` failure rendered in the new envelope alongside a v0.4 `cache clear all --json` partial failure.
 
 ### Breaking
 
@@ -48,7 +73,8 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 - The v1.0 contract-lock mechanism is now defined: [ADR-0011](../docs/adr/0011-contract-freeze.md) (canonical `81dda8c5`) introduces a JSON contract manifest and golden contract test, scheduled to land in v0.8. v0.4 ships under the same pre-1.0 two-phase rule as prior releases — the manifest and golden test do **not** retroactively freeze v0.4 shapes.
 - mihomoctl is still pre-1.0. Scripts depending on the v0.4 envelopes (streaming NDJSON, JSON error envelope, `cache clear` shape) should pin to an exact `0.4.x` and read this file before upgrading.
 
-[Unreleased]: https://github.com/vika2603/mihomoctl/compare/release/v0.3.0...HEAD
+[Unreleased]: https://github.com/vika2603/mihomoctl/compare/v0.4.1...HEAD
+[0.4.0]: https://github.com/vika2603/mihomoctl/compare/release/v0.3.0...v0.4.0
 
 ## [0.3.0] - 2026-05-07
 
