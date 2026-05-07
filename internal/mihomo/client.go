@@ -87,6 +87,35 @@ func (c *Client) SelectProxy(ctx context.Context, group, node string) error {
 	return c.do(ctx, http.MethodPut, path, map[string]string{"name": node}, nil)
 }
 
+type ProxyDelayOptions struct {
+	URL            string
+	ExpectedStatus string
+	DelayTimeout   time.Duration
+	RequestTimeout time.Duration
+}
+
+func (c *Client) ProxyDelay(ctx context.Context, name string, opts ProxyDelayOptions) (int, error) {
+	values := url.Values{}
+	if opts.URL != "" {
+		values.Set("url", opts.URL)
+	}
+	if opts.ExpectedStatus != "" {
+		values.Set("expected", opts.ExpectedStatus)
+	}
+	if opts.DelayTimeout > 0 {
+		values.Set("timeout", fmt.Sprintf("%d", opts.DelayTimeout.Milliseconds()))
+	}
+	path := "/proxies/" + url.PathEscape(name) + "/delay"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var v struct {
+		Delay int `json:"delay"`
+	}
+	err := c.doWithTimeout(ctx, http.MethodGet, path, nil, &v, opts.RequestTimeout)
+	return v.Delay, err
+}
+
 type GroupDelayOptions struct {
 	URL            string
 	DelayTimeout   time.Duration
@@ -150,9 +179,27 @@ func (c *Client) ListProxyProviders(ctx context.Context) (map[string]ProxyProvid
 	return v.Providers, err
 }
 
+func (c *Client) GetProxyProvider(ctx context.Context, name string) (ProxyProvider, error) {
+	var v ProxyProvider
+	path := "/providers/proxies/" + url.PathEscape(name)
+	err := c.do(ctx, http.MethodGet, path, nil, &v)
+	if err == nil && v.Name == "" {
+		v.Name = name
+	}
+	return v, err
+}
+
 func (c *Client) HealthcheckProxyProvider(ctx context.Context, name string) error {
 	path := "/providers/proxies/" + url.PathEscape(name) + "/healthcheck"
 	return c.do(ctx, http.MethodGet, path, nil, nil)
+}
+
+func (c *Client) ListRuleProviders(ctx context.Context) (map[string]RuleProvider, error) {
+	var v struct {
+		Providers map[string]RuleProvider `json:"providers"`
+	}
+	err := c.do(ctx, http.MethodGet, "/providers/rules", nil, &v)
+	return v.Providers, err
 }
 
 func (c *Client) QueryDNS(ctx context.Context, domain, queryType string) (DNSResponse, error) {
@@ -384,6 +431,15 @@ type ProxyProvider struct {
 type ProviderProxy struct {
 	Name  string `json:"name"`
 	Alive bool   `json:"alive"`
+}
+
+type RuleProvider struct {
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	VehicleType string    `json:"vehicleType"`
+	Behavior    string    `json:"behavior"`
+	RuleCount   int       `json:"ruleCount"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type DNSResponse struct {

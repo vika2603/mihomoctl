@@ -8,11 +8,13 @@ All notable changes to mihomoctl are documented here. Format: [Keep a Changelog 
 
 - `mihomoctl system ping` and `mihomoctl system version` — read-only controller runtime checks for v1.0. Both commands use `GET /version`: `system ping` treats a successful version response as the controller health check and reports endpoint plus version; `system version` prints the controller version directly. Both commands support `--json`. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.2)
 - `mihomoctl groups list` and `mihomoctl groups get <name>` — read-only proxy group inspection commands for v1.0, backed by `GET /group` and `GET /group/{name}`. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.4)
+- `mihomoctl proxy-providers list`, `mihomoctl proxy-providers get <name>`, `mihomoctl rule-providers list`, and `mihomoctl proxy delay <node>` — read-only provider/probe command surfaces for v1.0. Routes: `GET /providers/proxies`, `GET /providers/proxies/{provider}`, `GET /providers/rules`, and `GET /proxies/{name}/delay`. `rule-providers` intentionally exposes only `list` in this batch; ADR-0015 §5.5 does not allow invented rule-provider get/healthcheck commands. (PR <TBD>, PRD-0010 §2.4, inventory v0.3, ADR-0015 §5.4/§5.5)
 - `mihomoctl connections watch --limit <N>` — cap snapshot output at N connections per emit. Applies to all three output paths (TTY in-place table / non-TTY tab-separated row append / `--json` NDJSON literal); `--limit 0` or omitted = unlimited (sustained from v0.4 default behavior). G1 fix per Iris vika UX catch — `connections list` had `--limit` but `connections watch` did not. (PR <TBD>, PRD-0009 §2.5)
 
 ### Breaking
 
 - `mihomoctl group delay <name>` is removed for v1.0 and replaced by `mihomoctl groups delay <name>`. The upstream endpoint is unchanged (`GET /group/{name}/delay`); only the CLI namespace moves to the plural `groups` command family per ADR-0015 §5.4. Migration: replace `mihomoctl group delay X` with `mihomoctl groups delay X`.
+- `mihomoctl providers list` and `mihomoctl providers healthcheck <name>` are not the v1.0 canonical provider namespace. Use `mihomoctl proxy-providers list` / `mihomoctl proxy-providers get <name>` for read-only proxy-provider inspection; provider mutations and healthcheck move under the `proxy-providers` family in the v1.0 mutation batch. Rule providers use the separate `mihomoctl rule-providers list` namespace. No long-term `providers` alias is frozen per ADR-0015 §5.5/§7.
 
 ### Changed
 

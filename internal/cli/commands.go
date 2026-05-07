@@ -35,10 +35,10 @@ func newStatusCommand(out io.Writer, cfg *config) *cobra.Command {
 func newProxyCommand(out io.Writer, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "proxy",
-		Short: "List proxy groups or select a node",
+		Short: "List proxy groups, select a node, or probe node latency",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return usage("proxy requires list or set")
+				return usage("proxy requires list, set, or delay")
 			}
 			if err := commandHelp(cmd, args); err != nil || hasHelpArg(args) {
 				return err
@@ -46,7 +46,7 @@ func newProxyCommand(out io.Writer, cfg *config) *cobra.Command {
 			return usage("unknown proxy subcommand %q", args[0])
 		},
 	}
-	cmd.AddCommand(newProxyListCommand(out, cfg), newProxySetCommand(out, cfg))
+	cmd.AddCommand(newProxyListCommand(out, cfg), newProxySetCommand(out, cfg), newProxyDelayCommand(out, cfg))
 	return cmd
 }
 
