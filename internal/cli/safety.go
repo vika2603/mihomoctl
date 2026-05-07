@@ -69,8 +69,20 @@ func mutationAbortedError(target, reason string) error {
 // dryRunUnsupportedError is the low-tier rejection path declared by
 // ADR-0014 §4.1. It is exit 64 / category usage and carries an actionable
 // hint so callers know to drop the flag.
-func dryRunUnsupportedError(target string) error {
-	return usage("%s does not support --dry-run; it is a low-impact mutation that runs immediately. Drop --dry-run to proceed.", target)
+//
+// action is a short verb-phrase describing what the command actually does
+// when --dry-run is dropped ("flush the cache", "close the connection",
+// "refetch the provider"). It must not be empty: a generic "to proceed"
+// loses clarity for callers diagnosing scripts, and the per-command
+// regression suite asserts the exact verb (Iris regression catch
+// 04bd924 → next-HEAD).
+func dryRunUnsupportedError(target, action string) error {
+	if action == "" {
+		// Programmer error — fail loud rather than silently emit a vague
+		// "Drop --dry-run to proceed." style message.
+		return fmt.Errorf("dryRunUnsupportedError: action verb-phrase required for %s", target)
+	}
+	return usage("%s does not support --dry-run; it is a low-impact mutation that runs immediately. Drop --dry-run to %s.", target, action)
 }
 
 // confirmInput is the side-channel a medium-tier confirmation reads from.
@@ -150,6 +162,117 @@ func confirmMediumImpact(in confirmInput, opts mediumConfirmOptions) error {
 		return nil
 	}
 	return mutationAbortedError(opts.target, "user declined confirmation")
+}
+
+// highConfirmOptions captures the per-command knobs that vary across
+// high-tier mutations. ADR-0014 §4.3 requires literal-token confirmation
+// (the operator must retype the resource name, not just answer "yes") so
+// dangerous and ambiguous batch operations cannot be triggered by a
+// confused keystroke.
+type highConfirmOptions struct {
+	// target is the user-facing label for prompt/error envelopes
+	// ("connections close all", "config reload", "geo update").
+	target string
+	// summary is one short sentence rendered above the prompt so the
+	// operator sees the blast radius. Required.
+	summary string
+	// expectedToken is the literal string the operator must retype. It
+	// must be specific to the resource (e.g. the literal config name, the
+	// word "all" for a fleet operation, the file path for a patch). The
+	// generic word "yes" or "y" must not be used: ADR-0014 §4.3 requires
+	// the token to disambiguate from medium-tier prompts.
+	expectedToken string
+	// yes is the value of the command's --yes flag. For high-tier
+	// mutations --yes alone is not sufficient: a non-interactive session
+	// must also supply --confirm <token>. yes alone bypasses only the
+	// interactive prompt path; the token is still validated.
+	yes bool
+	// confirmToken is the value supplied via --confirm <token>. When the
+	// session is non-interactive (or when yes is set), this must equal
+	// expectedToken. When empty in a TTY without --yes, the helper
+	// prompts the operator to retype the token interactively.
+	confirmToken string
+}
+
+// confirmHighImpact implements the ADR-0014 §4.3 wire contract for every
+// high-tier mutation:
+//
+//   - non-TTY: requires --confirm <token> matching expectedToken; --yes
+//     alone is rejected with mutationAborted because automation that
+//     intends a high-impact change must transmit the literal resource
+//     name on the command line, not "yes".
+//   - TTY without --yes and without --confirm: prompts the operator to
+//     retype the token. Anything other than an exact match (case-
+//     sensitive) declines.
+//   - TTY with --yes: requires --confirm <token> matching expectedToken;
+//     yes is treated as "I waived the prompt, but the token still has
+//     to match".
+//
+// The helper does not log the secret material; callers must redact
+// upstream before passing summary/target/expectedToken.
+func confirmHighImpact(in confirmInput, opts highConfirmOptions) error {
+	if opts.target == "" {
+		return fmt.Errorf("confirmHighImpact: target required")
+	}
+	if opts.summary == "" {
+		return fmt.Errorf("confirmHighImpact: summary required")
+	}
+	if opts.expectedToken == "" {
+		return fmt.Errorf("confirmHighImpact: expectedToken required")
+	}
+	switch strings.ToLower(opts.expectedToken) {
+	case "yes", "y":
+		return fmt.Errorf("confirmHighImpact: expectedToken must be specific to the resource, not %q", opts.expectedToken)
+	}
+
+	// Non-interactive (CI / piped automation): --confirm <token> is
+	// mandatory. --yes alone is rejected.
+	if !in.isTTY {
+		if opts.confirmToken == "" {
+			return mutationAbortedError(opts.target,
+				fmt.Sprintf("non-interactive high-impact mutation requires --confirm %q (ADR-0014 §4.3)", opts.expectedToken))
+		}
+		if opts.confirmToken != opts.expectedToken {
+			return mutationAbortedError(opts.target,
+				fmt.Sprintf("--confirm token %q does not match the expected literal %q", opts.confirmToken, opts.expectedToken))
+		}
+		return nil
+	}
+
+	// Interactive session.
+	if opts.confirmToken != "" {
+		// Operator passed --confirm explicitly; still validate to keep
+		// behavior consistent with non-TTY callers.
+		if opts.confirmToken != opts.expectedToken {
+			return mutationAbortedError(opts.target,
+				fmt.Sprintf("--confirm token %q does not match the expected literal %q", opts.confirmToken, opts.expectedToken))
+		}
+		return nil
+	}
+	if opts.yes {
+		// --yes without --confirm in TTY: ADR-0014 §4.3 still requires
+		// the token. Surface a specific message so the operator can fix
+		// the invocation rather than guessing.
+		return mutationAbortedError(opts.target,
+			fmt.Sprintf("--yes alone is not enough for high-impact mutations; also pass --confirm %q (ADR-0014 §4.3)", opts.expectedToken))
+	}
+	if in.reader == nil || in.promptOut == nil {
+		return mutationAbortedError(opts.target,
+			"interactive session has no usable stdin or stderr; pass --confirm <token> to bypass the prompt")
+	}
+
+	fmt.Fprintf(in.promptOut, "%s\nThis is a HIGH-impact mutation. To proceed, retype: %s\n> ", opts.summary, opts.expectedToken)
+	scanner := bufio.NewScanner(in.reader)
+	if !scanner.Scan() {
+		return mutationAbortedError(opts.target,
+			"no response on stdin (EOF before token); pass --confirm <token> for non-interactive use")
+	}
+	typed := strings.TrimSpace(scanner.Text())
+	if typed != opts.expectedToken {
+		return mutationAbortedError(opts.target,
+			fmt.Sprintf("typed token %q does not match the expected literal %q", typed, opts.expectedToken))
+	}
+	return nil
 }
 
 // riskInfo is the JSON shape mandated by ADR-0014 §5 for every successful

@@ -21,7 +21,10 @@ func TestCacheClearRejectsDryRunWithActionableMessage(t *testing.T) {
 			err := run([]string{"cache", "clear", target, "--dry-run"}, &bytes.Buffer{})
 			assertCLIError(t, err, exitUsage, "does not support --dry-run")
 			assertCLIError(t, err, exitUsage, "low-impact mutation")
-			assertCLIError(t, err, exitUsage, "Drop --dry-run")
+			// Lock the cache-specific verb-phrase so future helper
+			// genericization cannot silently drift the wording (Iris
+			// regression catch on PR #7 04bd924).
+			assertCLIError(t, err, exitUsage, "Drop --dry-run to flush the cache")
 		})
 	}
 }
