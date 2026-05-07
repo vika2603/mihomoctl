@@ -18,11 +18,22 @@ const (
 )
 
 func HumanTable(headers []string, rows [][]string, width int) string {
+	// Per CEO directive msg=c414c475 ("表格不需要边框，去掉"): drop every
+	// border edge so the rendered output is purely whitespace-separated
+	// while preserving lipgloss column-width alignment that distinguishes
+	// the TTY path from the non-TTY tab-separated pipe path.
 	t := table.New().
 		Headers(headers...).
 		Rows(rows...).
-		Border(lipgloss.RoundedBorder()).
+		Border(lipgloss.NormalBorder()).
 		BorderStyle(lipgloss.NewStyle()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderHeader(false).
+		BorderRow(false).
+		BorderColumn(false).
 		Wrap(false)
 	if width > 0 {
 		t = t.Width(width)
